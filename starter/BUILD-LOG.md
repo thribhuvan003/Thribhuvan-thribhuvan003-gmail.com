@@ -44,3 +44,6 @@ Role choices now come from the database. Sign-out revokes the refresh token; che
 Device permissions were being read again for every row. I shared the loaded rows across the list: 1 device took 4 queries, and 5 devices also took 4.
 Sessions now use that same batch resolver. API 66/66, permissions 35/35 and personalisation 18/18 pass.
 The console now shows an initial refresh network error and skips device requests when device:list is denied. UI checks passed 25/25.
+## Phase 14 — run scripts
+`db:reset` still used `rm` and `npm start` still used Unix env syntax. The loader already resets the DB, so the script now calls it directly. Start sets production mode in a small Node file.
+Reset and build pass on Windows. `npm start` served the built index page in production mode.
