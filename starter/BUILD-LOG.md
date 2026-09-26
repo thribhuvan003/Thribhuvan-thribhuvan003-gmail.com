@@ -17,3 +17,6 @@ Checked them against the seeded DB in a rolled-back transaction.
 ## Phase 5 — auth routes
 Added login, current user, org switching and refresh rotation.
 Live checks passed for login, org switching, refresh and replay rejection.
+## Phase 6 — read routes
+Added org, member, effective permission, device and audit reads.
+Live checks passed for org isolation, hidden device rows and audit access.
