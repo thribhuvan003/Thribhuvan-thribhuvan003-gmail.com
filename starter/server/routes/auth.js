@@ -11,6 +11,8 @@ export function registerAuthRoutes(router, { db, secret }) {
     WHERE m.user_id = ? AND m.status = 'active' AND o.deleted_at IS NULL
     ORDER BY o.name
   `).all(userId);
+  const roles = () => db.prepare('SELECT key FROM roles ORDER BY rank DESC')
+    .all().map((row) => row.key);
 
   function answer(user, orgs, org) {
     return {
@@ -19,6 +21,7 @@ export function registerAuthRoutes(router, { db, secret }) {
       user: { id: user.id, email: user.email, name: user.name },
       orgId: org.id,
       role: org.role,
+      roles: roles(),
       orgs: orgs.map(({ id, name, theme, role }) => ({ id, name, theme, role })),
       permissions: resolve(db, { userId: user.id, orgId: org.id }).permissions,
     };
@@ -94,6 +97,18 @@ export function registerAuthRoutes(router, { db, secret }) {
     send(res, 200, answer(user, orgs, org));
   });
 
+  router.post('/v1/auth/logout', (ctx, _params, res) => {
+    const raw = ctx.req.headers.cookie?.split(';').map((part) => part.trim())
+      .find((part) => part.startsWith('rt='))?.slice(3);
+    if (raw) db.prepare(`
+      UPDATE refresh_tokens SET revoked_at = ?
+      WHERE token_hash = ? AND revoked_at IS NULL
+    `).run(nowIso(), hashRefreshToken(raw));
+    res.setHeader('set-cookie',
+      'rt=; Path=/v1/auth; HttpOnly; SameSite=Strict; Secure; Max-Age=0');
+    send(res, 200, { status: 'signed_out' });
+  });
+
   router.get('/v1/auth/me', (ctx, _params, res) => {
     const user = db.prepare('SELECT id, email, name FROM users WHERE id = ?').get(ctx.userId);
     const orgs = memberships(ctx.userId);
@@ -101,6 +116,7 @@ export function registerAuthRoutes(router, { db, secret }) {
     if (!org) throw unauthenticated();
     send(res, 200, { user: { id: user.id, email: user.email, name: user.name },
       orgId: org.id, role: org.role,
+      roles: roles(),
       orgs: orgs.map(({ id, name, theme, role }) => ({ id, name, theme, role })),
       permissions: resolve(db, { userId: ctx.userId, orgId: ctx.orgId }).permissions });
   });

@@ -36,3 +36,7 @@ Checked duplicate names, cross-org access, target permissions and session end on
 ## Phase 11 — grants and invites
 Added grant create/list/revoke and invite issue/list/revoke/accept. The grant permission FK rejects unknown names.
 The first API run passed 58 checks and failed the 8 invite checks because those routes were still missing. After adding them, all 66 passed.
+## Phase 12 — console
+Built the org switcher and views from the permissions returned by the API. The access token stays in memory; refresh restores the page after reload.
+The first UI run found a Windows dist path bug, then 3 Grants failures caused by old device rows rendering during navigation. Fixed both; 25/25 UI checks pass.
+Role choices now come from the database. Sign-out revokes the refresh token; checked that it cannot be used again.
