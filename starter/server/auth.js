@@ -1,9 +1,5 @@
 // JWT and password hashing, hand-rolled on node:crypto.
 //
-// Nothing here is hidden behind a library on purpose. Signing is done for you;
-// `verifyAccessToken` below is a stub you have to implement. The rules it must
-// enforce are in AUTH-DATA-MODEL.md §10 and restated in the TODO comment.
-//
 // The payload is base64, NOT encrypted. Never put a secret in it.
 
 import { createHmac, timingSafeEqual, randomBytes, scryptSync, randomUUID } from 'node:crypto';
@@ -47,36 +43,50 @@ export function issueAccessToken({ userId, orgId, role, permVersion }, secret) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// TODO — yours to implement.
-//
-// Verify an access token and return its claims, or throw `unauthenticated(...)`.
-// The signing half above is done for you; the verifying half is the exercise.
-//
-// It must reject ALL of the following, each with a 401 UNAUTHENTICATED:
-//
-//   1. a token that is not three dot-separated segments
-//   2. a header or payload that is not valid base64url-encoded JSON
-//   3. a header whose `alg` is anything other than 'HS256', or whose `typ` is not 'JWT'
-//      -- read the header, do NOT trust it. This is the `alg: none` and
-//         algorithm-substitution defence. The constants ALG, ISS and AUD are above.
-//   4. a signature that does not match, compared in constant time
-//   5. an `exp` that is missing, not a number, or <= now (note: <=, not <)
-//   6. an `iss` or `aud` that is not ours
-//   7. a missing or empty `jti`
-//
-// On success, return the decoded claims object.
-//
-// AUTH-DATA-MODEL.md §10 lists the failure modes; §2 defines the claim set.
-// `node scripts/check-jwt.js` is the public test suite for this function.
-// ---------------------------------------------------------------------------
+// Verify an access token and return its claims.
 export function verifyAccessToken(token, secret) {
-  // YOURS TO WRITE. Every failure mode listed above must be a 401 UNAUTHENTICATED.
-  // `node scripts/check-jwt.js` is the public suite for this function.
-  throw Object.assign(
-    new Error('TODO: server/auth.js — verifyAccessToken() is yours to write (AUTH-DATA-MODEL.md §10).'),
-    { code: 'NOT_IMPLEMENTED' }
-  );
+  const parts = typeof token === 'string' ? token.split('.') : [];
+  if (parts.length !== 3 || parts.some((part) => !/^[A-Za-z0-9_-]+$/.test(part))) {
+    throw unauthenticated();
+  }
+
+  const [h, p, s] = parts;
+  if (parts.some((part) => unb64(part).toString('base64url') !== part)) {
+    throw unauthenticated();
+  }
+
+  let header;
+  try {
+    header = JSON.parse(unb64(h).toString('utf8'));
+  } catch {
+    throw unauthenticated();
+  }
+  if (!header || typeof header !== 'object' || Array.isArray(header) ||
+      header.alg !== ALG || header.typ !== 'JWT') {
+    throw unauthenticated();
+  }
+
+  const expected = createHmac('sha256', secret).update(`${h}.${p}`).digest();
+  const signature = unb64(s);
+  if (signature.length !== expected.length || !timingSafeEqual(signature, expected)) {
+    throw unauthenticated();
+  }
+
+  let claims;
+  try {
+    claims = JSON.parse(unb64(p).toString('utf8'));
+  } catch {
+    throw unauthenticated();
+  }
+  if (!claims || typeof claims !== 'object' || Array.isArray(claims) ||
+      typeof claims.exp !== 'number' || !Number.isFinite(claims.exp) ||
+      claims.exp <= Math.floor(Date.now() / 1000) ||
+      claims.iss !== ISS || claims.aud !== AUD ||
+      typeof claims.jti !== 'string' || !claims.jti.trim()) {
+    throw unauthenticated();
+  }
+
+  return claims;
 }
 
 
