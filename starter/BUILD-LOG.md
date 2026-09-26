@@ -11,3 +11,7 @@ Added token checks for format, HS256, signature, expiry, issuer, audience and jt
 ### 2026-09-26
 Bearer token now loads the current membership. Wrong org returns 404, stale token 401, suspended member 403.
 Checked those cases against the seeded DB; all pass.
+## Phase 3 — permissions
+### 2026-09-26
+Resolver reads roles, permissions and grants from the DB. Deny wins, and device grants stay scoped.
+`check-permissions.js`: 35/35. Personalisation: 18/18. Checked org-wide grant scope separately.

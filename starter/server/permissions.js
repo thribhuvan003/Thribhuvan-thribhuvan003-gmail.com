@@ -1,61 +1,125 @@
-// The permission resolution engine. THE ONLY PLACE allow-vs-deny is decided.
-//
-// YOURS TO WRITE. This file ships as a stub.
-//
-// If you ever find yourself writing `if (role === 'admin')` outside this file — and
-// especially under web/ — that is the bug this module exists to prevent. The console
-// renders what this returns; it must never re-derive it.
-//
-// Inputs you will need:
-//   permissions                 the catalogue (19 rows in db/reference.sql, but read it
-//                               from the table, never hardcode it)
-//   permission_patterns         the superset grants may name ('device:*', '*', ...)
-//   role_permissions            the per-role baseline
-//   memberships                 role + status + perm_version
-//   grants / grant_permissions  per-user deltas, optionally device-scoped and windowed
-//
-// Behaviour to implement is in PERMISSIONS.md; the failure modes and the reason codes
-// the API must report are in §10, and the shipped tests read those reason strings.
-//
-// NOTE: your database is personalised. There is at least one role and one permission in
-// it that this exercise's prose never mentions. Read the tables; do not encode the
-// documented matrix. Run `npm run personalisation` to see what you are dealing with.
-
-const todo = (name) =>
-  Object.assign(
-    new Error(`TODO: server/permissions.js — ${name}() is yours to write (BRIEF.md §3).`),
-    { code: 'NOT_IMPLEMENTED' }
-  );
+import { badRequest, forbidden } from './http.js';
 
 export const MODE_PERMISSION = { view: 'device:view', control: 'device:control', terminal: 'device:terminal' };
 
-// Resolve one user's permission set in one org. deviceId === null means the org-level
-// view; a deviceId means the exact per-device check.
-export function resolve(db, { userId, orgId, deviceId = null, now = new Date() }) {
-  throw todo('resolve');
+const matches = (pattern, permission) =>
+  pattern === '*' || pattern === permission ||
+  (pattern.endsWith(':*') && permission.startsWith(pattern.slice(0, -1)));
+
+// Resolve from the current database rows, including the full permission catalogue.
+export function resolve(db, { userId, orgId, deviceId = null, now = new Date(), orgOnly = false }) {
+  const catalogue = db.prepare('SELECT key FROM permissions ORDER BY key').all().map((row) => row.key);
+  const membership = db.prepare(`
+    SELECT m.role, m.status FROM memberships m
+    JOIN organizations o ON o.id = m.org_id AND o.deleted_at IS NULL
+    WHERE m.user_id = ? AND m.org_id = ?
+  `).get(userId, orgId);
+
+  if (!membership || membership.status !== 'active') {
+    const reason = membership?.status === 'suspended' ? 'suspended' : 'not_a_member';
+    return {
+      role: membership?.status === 'suspended' ? membership.role : null,
+      permissions: Object.fromEntries(catalogue.map((key) =>
+        [key, { effect: 'deny', source: null, reason }])),
+    };
+  }
+
+  const baseline = new Set(db.prepare('SELECT permission FROM role_permissions WHERE role = ?')
+    .all(membership.role).map((row) => row.permission));
+  const time = now.toISOString();
+  const grants = db.prepare(`
+    SELECT g.id, g.device_id, g.effect, gp.permission
+    FROM grants g JOIN grant_permissions gp ON gp.grant_id = g.id
+    WHERE g.user_id = ? AND g.org_id = ? AND g.revoked_at IS NULL
+      AND (g.starts_at IS NULL OR g.starts_at <= ?)
+      AND (g.expires_at IS NULL OR g.expires_at > ?)
+    ORDER BY g.id
+  `).all(userId, orgId, time, time);
+
+  function atScope(permission, scope) {
+    const applicable = grants.filter((grant) =>
+      (grant.device_id === null || grant.device_id === scope) &&
+      matches(grant.permission, permission));
+    const denial = applicable.find((grant) => grant.effect === 'deny');
+    if (denial) return { effect: 'deny', source: `grant:${denial.id}`, reason: 'explicit_deny' };
+    if (baseline.has(permission)) {
+      return { effect: 'allow', source: `role:${membership.role}`, reason: null };
+    }
+    const allowance = applicable.find((grant) => grant.effect === 'allow');
+    if (allowance) return { effect: 'allow', source: `grant:${allowance.id}`, reason: null };
+    return { effect: 'deny', source: null, reason: 'implicit' };
+  }
+
+  const deviceIds = orgOnly ? [] : deviceId === null
+    ? db.prepare('SELECT id FROM devices WHERE org_id = ? AND deleted_at IS NULL ORDER BY id')
+      .all(orgId).map((row) => row.id)
+    : [deviceId];
+  const permissions = {};
+  for (const key of catalogue) {
+    const answers = deviceIds.map((id) => atScope(key, id));
+    permissions[key] = answers.find((answer) => answer.effect === 'allow') ??
+      answers.find((answer) => answer.reason === 'explicit_deny') ??
+      atScope(key, null);
+  }
+  return { role: membership.role, permissions };
 }
 
-// Batched form for list endpoints: { role, byDevice: { [deviceId]: permissions } }.
 export function resolveDevices(db, { userId, orgId, deviceIds, now = new Date() }) {
-  throw todo('resolveDevices');
+  const byDevice = {};
+  let role = deviceIds.length ? null : resolve(db, { userId, orgId, now }).role;
+  for (const deviceId of deviceIds) {
+    const result = resolve(db, { userId, orgId, deviceId, now });
+    role = result.role;
+    byDevice[deviceId] = result.permissions;
+  }
+  return { role, byDevice };
 }
 
-export function can(db, ctx, permission, deviceId) {
-  throw todo('can');
+export function can(db, ctx, permission, deviceId = null) {
+  return resolve(db, { userId: ctx.userId, orgId: ctx.orgId, deviceId })
+    .permissions[permission]?.effect === 'allow';
 }
 
-// Throws 403 carrying the reason code, so a refusal is debuggable.
-export function assertCan(db, ctx, permission, deviceId) {
-  throw todo('assertCan');
+export function assertCan(db, ctx, permission, deviceId = null) {
+  const answer = resolve(db, { userId: ctx.userId, orgId: ctx.orgId, deviceId })
+    .permissions[permission];
+  if (answer?.effect !== 'allow') {
+    throw forbidden('forbidden', answer?.reason === 'explicit_deny' ? 'explicit_deny' :
+      answer?.reason === 'suspended' ? 'suspended' : 'missing_permission');
+  }
 }
 
-// No privilege laundering: you may only grant authority you hold at that scope.
 export function assertMayGrant(db, ctx, patterns, deviceId = null) {
-  throw todo('assertMayGrant');
+  const catalogue = db.prepare('SELECT key FROM permissions').all().map((row) => row.key);
+  const validPatterns = new Set(db.prepare('SELECT pattern FROM permission_patterns')
+    .all().map((row) => row.pattern));
+  const requested = new Set();
+  for (const pattern of patterns) {
+    if (!validPatterns.has(pattern)) throw badRequest('unknown permission');
+    for (const permission of catalogue.filter((key) => matches(pattern, key))) {
+      requested.add(permission);
+    }
+  }
+
+  const deviceIds = deviceId === null
+    ? [null, ...db.prepare('SELECT id FROM devices WHERE org_id = ? AND deleted_at IS NULL')
+      .all(ctx.orgId).map((row) => row.id)]
+    : [deviceId];
+  for (const id of deviceIds) {
+    const result = resolve(db, { userId: ctx.userId, orgId: ctx.orgId,
+      deviceId: id, orgOnly: id === null });
+    for (const permission of requested) {
+      if (result.permissions[permission]?.effect !== 'allow') {
+        throw forbidden('forbidden', 'missing_permission');
+      }
+    }
+  }
 }
 
-// The compound check: session:start AND the permission for the requested mode, and a
-// refusal must distinguish WHICH of the two was missing.
 export function assertCanStartSession(db, ctx, mode, deviceId) {
-  throw todo('assertCanStartSession');
+  if (!MODE_PERMISSION[mode]) throw badRequest('invalid session mode');
+  if (!can(db, ctx, 'session:start', deviceId)) throw forbidden('forbidden', 'missing_permission');
+  if (!can(db, ctx, MODE_PERMISSION[mode], deviceId)) {
+    throw forbidden('forbidden', 'missing_device_permission');
+  }
 }
