@@ -1,5 +1,5 @@
 import { audit, auditDenials } from '../audit.js';
-import { bumpPermVersion, newId } from '../db.js';
+import { bumpPermVersion, newId, nowIso } from '../db.js';
 import { badRequest, forbidden, notFound, selfRoleChange, send } from '../http.js';
 import { assertCanModify, assertNotLastOwner, assertRoleExists,
   endActiveSessions, roleRanks } from '../lifecycle.js';
@@ -10,6 +10,13 @@ export function registerMemberRoutes(router, { db }) {
     SELECT * FROM memberships WHERE org_id = ? AND user_id = ?
       AND status IN ('active', 'suspended')
   `).get(orgId, userId);
+
+  function revokeGrants(orgId, userId) {
+    db.prepare(`
+      UPDATE grants SET revoked_at = ?
+      WHERE org_id = ? AND user_id = ? AND revoked_at IS NULL
+    `).run(nowIso(), orgId, userId);
+  }
 
   router.post('/v1/orgs', (ctx, _params, res) => {
     if (typeof ctx.body.name !== 'string') throw badRequest('invalid org name');
@@ -71,6 +78,7 @@ export function registerMemberRoutes(router, { db }) {
           if (status !== 'active') assertNotLastOwner(db, ctx.orgId, userId);
           db.prepare('UPDATE memberships SET status = ? WHERE id = ?').run(status, target.id);
           bumpPermVersion(db, { orgId: ctx.orgId, userId });
+          if (status === 'removed') revokeGrants(ctx.orgId, userId);
           if (reason) endActiveSessions(db, { orgId: ctx.orgId, userId, reason });
           audit(db, { orgId: ctx.orgId, actorId: ctx.userId, action,
             targetType: 'user', targetId: userId, result: 'allow', requestId: ctx.requestId });
@@ -92,6 +100,7 @@ export function registerMemberRoutes(router, { db }) {
         UPDATE memberships SET status = 'removed', perm_version = perm_version + 1
         WHERE org_id = ? AND user_id = ? AND status = 'active'
       `).run(ctx.orgId, ctx.userId);
+      revokeGrants(ctx.orgId, ctx.userId);
       endActiveSessions(db, { orgId: ctx.orgId, userId: ctx.userId,
         reason: 'membership_removed' });
       audit(db, { orgId: ctx.orgId, actorId: ctx.userId, action: 'member:leave',

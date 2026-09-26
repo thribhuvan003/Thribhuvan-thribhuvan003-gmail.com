@@ -51,3 +51,6 @@ The console now shows an initial refresh network error and skips device requests
 Reset and build pass on Windows. `npm start` served the built index page in production mode.
 ## Phase 15 — submission check
 The hiring email says both write-ups belong at the repository root, while the starter templates were inside `starter/`. Moved the files and kept the earlier log history through Git's rename tracking.
+## Phase 16 — rejoin
+I expected removal to clear old authority. A throwaway API check showed a removed viewer invited back as auditor still got `device:control` from an old grant.
+Removal and self-leave now revoke live grants. Suspension keeps them for reinstatement. Seven edge checks and the public API suite (66/66) pass.

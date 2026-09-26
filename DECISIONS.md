@@ -48,6 +48,12 @@
 **What I rejected:** Adding another reset script. `scripts/load-db.js` already removes the database and rebuilds it.
 **What would change my mind:** A loader that becomes additive instead of rebuilding the database.
 
+### Revoke grants when a membership is removed
+**What I chose:** Removal and self-leave set `revoked_at` on that member's live grants. Suspension leaves grants in place.
+**Why:** A throwaway API check showed an old `device:control` grant became active again after removal and re-invite as auditor. The same check passes after the change in `server/routes/members.js` (Phase 16 log).
+**What I rejected:** Leaving grants untouched on removal. It restores old authority when the person rejoins, even under a different role.
+**What would change my mind:** A stated product rule that rejoining should deliberately restore earlier grants.
+
 ## Where this repo argues with itself
 `BRIEF.md` scores API 30%, UI 20%, code quality 25% and walkthrough 25%. `starter/README.md` scores code 50%, build log and decisions 30%, walkthrough 20%. I built the API and UI and kept both write-ups. The second breakdown gives the write-ups an explicit score, so I treated them as deliverables too.
 
