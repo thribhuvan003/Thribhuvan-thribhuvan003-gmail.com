@@ -259,9 +259,9 @@ Three artifacts are graded: the code (50%), `BUILD-LOG.md` + `DECISIONS.md` (30%
 walkthrough (20%) drawn from your own log.
 
 ```sh
-DISCOVERY-BRIEF.md   # what the write-up has to contain. read before you start.
-BUILD-LOG.md         # append as you go, and commit as you go
-DECISIONS.md         # one section per decision, including the alternative you rejected
+DISCOVERY-BRIEF.md   # what the write-up has to contain
+../BUILD-LOG.md      # log, moved to the repository root for submission
+../DECISIONS.md      # decisions, moved to the repository root for submission
 ```
 
 The one rule that matters: **`BUILD-LOG.md` grows alongside the code, in its own commits.** A log

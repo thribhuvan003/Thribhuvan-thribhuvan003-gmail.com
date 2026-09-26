@@ -51,7 +51,10 @@
 ## Where this repo argues with itself
 `BRIEF.md` scores API 30%, UI 20%, code quality 25% and walkthrough 25%. `starter/README.md` scores code 50%, build log and decisions 30%, walkthrough 20%. I built the API and UI and kept both write-ups. The second breakdown gives the write-ups an explicit score, so I treated them as deliverables too.
 
-`WORKFLOW.md` says a short `NOTES.md` at the repo root is enough. `starter/README.md` and `starter/DISCOVERY-BRIEF.md` name `DECISIONS.md` inside `starter/`. I used `starter/DECISIONS.md` because that is the named template and all my changes belong in `starter/`.
+`WORKFLOW.md` says a short `NOTES.md` at the repo root is enough. `starter/README.md` and `starter/DISCOVERY-BRIEF.md` name `DECISIONS.md` inside `starter/`. The hiring email requires both write-ups at the repository root, so I moved them there. Git can follow the earlier log commits through the move.
+
+## Tools used
+Codex helped implement and review the code and write-ups. I checked the behavior with the shipped JWT, permissions, personalisation, API and UI suites, and ran the app in dev and production mode.
 
 ## Deliberately not built
 Email delivery, password reset and rate limiting. `starter/README.md` leaves these outside this exercise; invite tokens are returned by the API for the demo.

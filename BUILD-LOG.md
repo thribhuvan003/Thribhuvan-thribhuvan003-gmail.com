@@ -49,3 +49,5 @@ The console now shows an initial refresh network error and skips device requests
 ## Phase 14 — run scripts
 `db:reset` still used `rm` and `npm start` still used Unix env syntax. The loader already resets the DB, so the script now calls it directly. Start sets production mode in a small Node file.
 Reset and build pass on Windows. `npm start` served the built index page in production mode.
+## Phase 15 — submission check
+The hiring email says both write-ups belong at the repository root, while the starter templates were inside `starter/`. Moved the files and kept the earlier log history through Git's rename tracking.
