@@ -2,9 +2,7 @@
 
 A multi-org permission console. One process, one port, one command.
 
-This file describes the repository you were given: how to run it, what is already done, what is
-yours to write, the guarantees the database already provides, and the attributes the console has
-to carry.
+This file covers setup, tests, the database guarantees, and the console contract.
 
 ## Run it
 
@@ -26,17 +24,16 @@ npm start            # one process, production mode
 
 ```sh
 node scripts/check-permissions.js   # the resolution engine
-node scripts/check-jwt.js           # token verification — you implement this
+node scripts/check-jwt.js           # token verification
 node scripts/check-api.js           # the HTTP contract
+node scripts/check-personalisation.js # extra role and permission from this database
 npx playwright test                 # the console contract
 ```
 
-The first three need only `better-sqlite3`. Playwright needs `npx playwright install chromium`
+The first four need only `better-sqlite3`. Playwright needs `npx playwright install chromium`
 once.
 
-`check-jwt.js` fails until you implement `verifyAccessToken` in `server/auth.js` — that function
-is a stub. `check-api.js` and the UI suite fail with it, because every authenticated request
-depends on it. Implement it first.
+The JWT, API and UI suites now pass with the implementation in this folder.
 
 These suites are the floor, not the grade. They cover the happy path and the obvious failures;
 we grade on a separate set that goes after the awkward cases.
@@ -60,11 +57,11 @@ server/
   auth.js            JWT + scrypt, hand-rolled on node:crypto. Signing is done.
 ```
 
-**Yours to write.** Everything below is missing or stubbed. This is the task.
+**Implemented here.**
 
 ```
 server/
-  auth.js            implement `verifyAccessToken` — the token verifier
+  auth.js            `verifyAccessToken` — the token verifier
   context.js         token -> caller, with structural org isolation
   permissions.js     the resolution engine — the only place allow/deny is decided
   lifecycle.js       role ranks, last-owner, ending sessions

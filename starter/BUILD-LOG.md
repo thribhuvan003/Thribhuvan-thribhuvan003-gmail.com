@@ -36,9 +36,11 @@ Checked duplicate names, cross-org access, target permissions and session end on
 ## Phase 11 — grants and invites
 Added grant create/list/revoke and invite issue/list/revoke/accept. The grant permission FK rejects unknown names.
 The first API run passed 58 checks and failed the 8 invite checks because those routes were still missing. After adding them, all 66 passed.
+I left unknown permission validation to the FK. `check-api.js` got 400 with `unknown_permission` for `device:teleport`.
 ## Phase 12 — console
 Built the org switcher and views from the permissions returned by the API. The access token stays in memory; refresh restores the page after reload.
-The first UI run found a Windows dist path bug, then 3 Grants failures caused by old device rows rendering during navigation. Fixed both; 25/25 UI checks pass.
+The first UI run found a Windows dist path bug. After that fix, I expected the Grants view to show only its new rows, but UI passed 22/25: old device rows stayed during navigation. Clearing rows on view change fixed the 3 failures; 25/25 pass.
+The brief left the page layout open. I used table views and the API's permission answers to decide which controls appear.
 Role choices now come from the database. Sign-out revokes the refresh token; checked that it cannot be used again.
 ## Phase 13 — list fixes
 Device permissions were being read again for every row. I shared the loaded rows across the list: 1 device took 4 queries, and 5 devices also took 4.

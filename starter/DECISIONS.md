@@ -1,65 +1,57 @@
-# DECISIONS
+# Decisions
 
-One section per decision that a reviewer might reasonably have made differently. Every section has
-the same four parts, and the third and fourth are the ones we weigh most.
+### Read roles and permissions from SQLite
+**What I chose:** `resolve()` loads the permission catalogue, role baseline and grants from the DB.
+**Why:** `check-personalisation.js` passes 18/18 with a role and permission absent from `reference.sql` (commit `8bb137e`).
+**What I rejected:** A JavaScript role map would pass the seed fixture but miss those extra rows.
+**What would change my mind:** A fixed catalogue guaranteed across every database and migration.
 
-Rules, from `DISCOVERY-BRIEF.md`:
+### Keep one resolver for the API and device rows
+**What I chose:** `resolve()` and `resolveDevices()` share `loadState()` and `permissionSet()` in `server/permissions.js`.
+**Why:** The device list first loaded permissions per row. After sharing the reads, I counted 4 queries for 1 device and 4 for 5 (commit `09b8860`, Phase 13 log).
+**What I rejected:** Calling `resolve()` for each device. That repeats the catalogue, membership, baseline and grant reads as the list grows.
+**What would change my mind:** A measured case where the shared reads cost more than the per-row calls.
 
-- cite something real in `Why` — a commit, a test, an error string, a file and line
-- do not restate what a document says; describe what you did when the documents ran out
-- six to twelve decisions is the expected range
+### Let an applicable deny win before the role baseline
+**What I chose:** `atScope()` checks explicit denies before the baseline and allows.
+**Why:** `check-permissions.js` passes 35/35, including the deny cases. The reason returned by `atScope()` is `explicit_deny` (commit `8bb137e`).
+**What I rejected:** Picking the narrower grant last. An org-wide deny would then lose to a device allow.
+**What would change my mind:** A required case where a device allow should survive an applicable org-wide deny.
 
----
+### Check current membership on every authenticated request
+**What I chose:** `authenticate()` verifies the token, matches its org to the route, then reads current membership and token version.
+**Why:** Phase 2 checks covered wrong org, suspended membership and stale tokens. `check-api.js` passes 66/66 (commits `f21a180`, `b009664`).
+**What I rejected:** Trusting the role inside the signed token until expiry. A removed member could keep using it.
+**What would change my mind:** A revocation mechanism that invalidates the token without a DB read and passes the same cases.
 
-### <the decision, as a claim — not "permissions", but "the org-level view counts device-scoped grants">
+### Use the database to reject unknown grant permissions
+**What I chose:** Grant creation inserts permission rows in one transaction and maps the FK failure to `unknown_permission`.
+**Why:** `grant_permissions.permission` has a foreign key to `permission_patterns`; `server/routes/grants.js` catches `SQLITE_CONSTRAINT_FOREIGNKEY`. The API suite passes 66/66 (commit `fab1f25`).
+**What I rejected:** A second list of valid permission strings in the route. It would drift from the personalised DB.
+**What would change my mind:** A permission expression that cannot be represented or checked by the schema.
 
-**What I chose:**
-**Why:** _(evidence: test, log line, commit)_
-**What I rejected:** _(the plausible alternative, and the specific reason it fails)_
-**What would change my mind:**
+### Snapshot session authority at start
+**What I chose:** Session start stores the resolved permission set and an expiry; grant changes affect later starts.
+**Why:** `snapshotAuthority()` and `sessionExpiry()` are used by `server/routes/sessions.js`. Phase 7 checks covered expiry and the saved authority (commit `f99cb39`).
+**What I rejected:** Recomputing authority for an active session after every role or grant change. That would change an existing session midway.
+**What would change my mind:** A product rule requiring live revocation of an active session after a grant change.
 
-<!-- Copy the block above per decision. The two stubs below show the required shape and contain no
-     engineering content — replace or delete them. -->
+### Keep the access token in memory
+**What I chose:** The console holds the access token in React state and uses the refresh cookie after a reload.
+**Why:** UI checks passed 25/25 after the reload flow was fixed; sign-out was checked to revoke the refresh token (Phase 12, commit `c4d28e5`).
+**What I rejected:** Saving the access token in local storage. A stale token could survive a reload and would add another place to clear on sign-out.
+**What would change my mind:** A requirement for offline access or a different session model that makes browser persistence necessary.
 
----
-
-### Stub — the shape of a weak "Why"
-
-**What I chose:** the obvious thing.
-**Why:** it is what the brief says to do.
-**What I rejected:** nothing, the alternative seemed worse.
-**What would change my mind:** I do not know.
-
-_Reads as a memory of the document, not a model of the system. Scores nothing._
-
----
-
-### Stub — the shape of a strong "Why"
-
-**What I chose:** X.
-**Why:** I implemented Y first, because Y is the intuitive precedence rule. `node scripts/check-
-permissions.js` reported `<the actual reason string it reported>` on the case where the two grants
-disagree. That is only reachable if the two are evaluated in a different order than Y assumes.
-Moved to X in `<commit>` and the case passed. Logged in `BUILD-LOG.md` under Phase 2.
-**What I rejected:** Y, and also "resolve the narrower one last" — both fail the same case for the
-same reason.
-**What would change my mind:** a case where a narrower grant is expected to survive a broader
-refusal. I could not construct one, which is itself evidence for X.
-
-_Shows what you believed, what disproved it, and what you did next._
-
----
+### Keep setup commands cross-platform
+**What I chose:** `db:reset` calls the existing idempotent loader; `npm start` runs `scripts/start.js` to set production mode.
+**Why:** The original shell commands failed on Windows. After this change, reset and build pass, and `npm start` served `index.html` in production mode (Phase 14 log).
+**What I rejected:** Adding another reset script. `scripts/load-db.js` already removes the database and rebuilds it.
+**What would change my mind:** A loader that becomes additive instead of rebuilding the database.
 
 ## Where this repo argues with itself
+`BRIEF.md` scores API 30%, UI 20%, code quality 25% and walkthrough 25%. `starter/README.md` scores code 50%, build log and decisions 30%, walkthrough 20%. I built the API and UI and kept both write-ups. The second breakdown gives the write-ups an explicit score, so I treated them as deliverables too.
 
-The documents contradict each other, or contradict the schema, in at least one place. Name each
-one you found. For each: quote both statements, say which you built against, and say why.
-
-Building against the written rule and arguing in writing is a **full-marks** answer. Silently
-working around it, or quietly picking one and saying nothing, scores zero on the section — we
-cannot tell the difference between a decision and an oversight.
+`WORKFLOW.md` says a short `NOTES.md` at the repo root is enough. `starter/README.md` and `starter/DISCOVERY-BRIEF.md` name `DECISIONS.md` inside `starter/`. I used `starter/DECISIONS.md` because that is the named template and all my changes belong in `starter/`.
 
 ## Deliberately not built
-
-What you chose not to build, and the reason. A scope cut with a stated reason is a senior
-judgement. An unmentioned gap is a gap.
+Email delivery, password reset and rate limiting. `starter/README.md` leaves these outside this exercise; invite tokens are returned by the API for the demo.
