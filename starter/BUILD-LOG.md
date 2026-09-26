@@ -14,3 +14,6 @@ Resolver reads roles, permissions and grants from the DB. Deny wins, and device 
 ## Phase 4 — shared rules
 Added role checks, last-owner guard, session ending and audit writes.
 Checked them against the seeded DB in a rolled-back transaction.
+## Phase 5 — auth routes
+Added login, current user, org switching and refresh rotation.
+Live checks passed for login, org switching, refresh and replay rejection.
