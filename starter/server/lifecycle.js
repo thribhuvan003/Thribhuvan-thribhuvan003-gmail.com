@@ -1,27 +1,57 @@
-// Shared domain rules: role ranks, last-owner protection, ending sessions.
-//
-// YOURS TO WRITE. This file ships as a stub.
-//
-// Put here the rules more than one route needs, so "what ends a session" has exactly
-// one implementation. Sources: PERMISSIONS.md §7.2 and D8.
-//
-// Two traps worth naming before you start:
-//   - `roles.rank` is MODIFICATION AUTHORITY ONLY. It must never answer a can()
-//     question. operator and auditor are unordered by permission, and ranking them is
-//     the modelling error the auditor role exists to catch.
-//   - a permission change does NOT end a session in flight (grantfathering). Suspension,
-//     membership removal and device transfer DO. See PERMISSIONS.md §7.
+import { badRequest, forbidden, lastOwner, notFound } from './http.js';
+import { nowIso } from './db.js';
+import { resolve } from './permissions.js';
 
-const todo = (name) =>
-  Object.assign(
-    new Error(`TODO: server/lifecycle.js — ${name}() is yours to write (BRIEF.md §3).`),
-    { code: 'NOT_IMPLEMENTED' }
-  );
+export function roleRanks(db) {
+  return Object.fromEntries(db.prepare('SELECT key, rank FROM roles').all()
+    .map((role) => [role.key, role.rank]));
+}
 
-export function roleRanks(db) { throw todo('roleRanks'); }
-export function assertRoleExists(db, role) { throw todo('assertRoleExists'); }
-export function assertCanModify(db, callerRole, targetRole) { throw todo('assertCanModify'); }
-export function assertNotLastOwner(db, orgId, userId) { throw todo('assertNotLastOwner'); }
-export function endActiveSessions(db, { orgId, userId, deviceId, reason, exceptSessionId }) { throw todo('endActiveSessions'); }
-export function snapshotAuthority(db, { userId, orgId, deviceId }) { throw todo('snapshotAuthority'); }
-export function sessionExpiry(db, orgId) { throw todo('sessionExpiry'); }
+export function assertRoleExists(db, role) {
+  if (!db.prepare('SELECT 1 FROM roles WHERE key = ?').get(role)) {
+    throw badRequest('unknown role');
+  }
+}
+
+export function assertCanModify(db, callerRole, targetRole) {
+  assertRoleExists(db, targetRole);
+  const ranks = roleRanks(db);
+  if (!ranks[callerRole] || ranks[callerRole] <= ranks[targetRole]) {
+    throw forbidden();
+  }
+}
+
+export function assertNotLastOwner(db, orgId, userId) {
+  const member = db.prepare(`
+    SELECT role, status FROM memberships WHERE org_id = ? AND user_id = ?
+  `).get(orgId, userId);
+  if (member?.role !== 'owner' || member.status !== 'active') return;
+  const owners = db.prepare(`
+    SELECT count(*) AS count FROM memberships
+    WHERE org_id = ? AND role = 'owner' AND status = 'active'
+  `).get(orgId).count;
+  if (owners <= 1) throw lastOwner();
+}
+
+export function endActiveSessions(db, { orgId, userId = null, deviceId = null, reason, exceptSessionId = null }) {
+  return db.prepare(`
+    UPDATE sessions SET state = 'ended', end_reason = ?, ended_at = ?
+    WHERE org_id = ? AND state IN ('connecting', 'active')
+      AND (? IS NULL OR user_id = ?)
+      AND (? IS NULL OR device_id = ?)
+      AND (? IS NULL OR id <> ?)
+  `).run(reason, nowIso(), orgId, userId, userId, deviceId, deviceId,
+    exceptSessionId, exceptSessionId).changes;
+}
+
+export function snapshotAuthority(db, { userId, orgId, deviceId }) {
+  return resolve(db, { userId, orgId, deviceId });
+}
+
+export function sessionExpiry(db, orgId) {
+  const org = db.prepare(`
+    SELECT max_session_minutes FROM organizations WHERE id = ? AND deleted_at IS NULL
+  `).get(orgId);
+  if (!org) throw notFound();
+  return new Date(Date.now() + org.max_session_minutes * 60_000).toISOString();
+}
