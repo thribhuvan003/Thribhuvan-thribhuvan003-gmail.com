@@ -30,3 +30,6 @@ Reinstate now refuses invited memberships; checked that separately.
 ## Phase 9 — org changes
 Added rename and soft delete. Delete ends sessions and removes memberships.
 Live checks passed; the generated DB is back to the seed state.
+## Phase 10 — device changes
+Added create, update, delete and transfer. Hidden devices return 404 on writes.
+Checked duplicate names, cross-org access, target permissions and session end on transfer using a throwaway DB. Build, JWT, permissions and personalisation checks pass.
