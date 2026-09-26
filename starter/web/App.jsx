@@ -111,7 +111,8 @@ export default function App() {
     if (skipRefresh || path.startsWith('/invite/')) { setBooting(false); return; }
     const orgId = new URLSearchParams(window.location.search).get('org');
     api('/auth/refresh', { method: 'POST', body: orgId ? { orgId } : {} })
-      .then(setSession).catch(() => {}).finally(() => setBooting(false));
+      .then(setSession).catch((err) => { if (!err.code) setLoginError(err); })
+      .finally(() => setBooting(false));
   }, [path, skipRefresh]);
 
   function enter(data) {
@@ -146,11 +147,15 @@ export default function App() {
           if (live) setRows(data.members);
         } else if (view === 'grants') {
           const [grants, people, available] = await Promise.all([
-            read('grants'), read('members'), read('devices'),
+            read('grants'), read('members'),
+            has(session.permissions, 'device:list') ? read('devices') : Promise.resolve({ devices: [] }),
           ]);
           if (live) { setRows(grants.grants); setMembers(people.members); setDevices(available.devices); }
         } else if (view === 'sessions') {
-          const [sessions, available] = await Promise.all([read('sessions'), read('devices')]);
+          const [sessions, available] = await Promise.all([
+            read('sessions'),
+            has(session.permissions, 'device:list') ? read('devices') : Promise.resolve({ devices: [] }),
+          ]);
           if (live) { setRows(sessions.sessions); setDevices(available.devices); }
         } else if (view === 'audit') {
           const data = await read('audit');
@@ -201,9 +206,11 @@ export default function App() {
         const name = window.prompt('Organization name');
         if (!name) return;
         const created = await change('/orgs', 'POST', { name });
-        if (created) enter(await api('/auth/token', {
-          method: 'POST', token: session.token, body: { orgId: created.id },
-        }));
+        if (created) {
+          try { enter(await api('/auth/token', {
+            method: 'POST', token: session.token, body: { orgId: created.id },
+          })); } catch (err) { setMessage(err.message); }
+        }
       }}>+ Create organization</button>
       <p className="section-label">Workspace</p>
       <nav>{cards.map(([key, label, permission]) => {

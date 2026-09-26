@@ -40,3 +40,7 @@ The first API run passed 58 checks and failed the 8 invite checks because those 
 Built the org switcher and views from the permissions returned by the API. The access token stays in memory; refresh restores the page after reload.
 The first UI run found a Windows dist path bug, then 3 Grants failures caused by old device rows rendering during navigation. Fixed both; 25/25 UI checks pass.
 Role choices now come from the database. Sign-out revokes the refresh token; checked that it cannot be used again.
+## Phase 13 — list fixes
+Device permissions were being read again for every row. I shared the loaded rows across the list: 1 device took 4 queries, and 5 devices also took 4.
+Sessions now use that same batch resolver. API 66/66, permissions 35/35 and personalisation 18/18 pass.
+The console now shows an initial refresh network error and skips device requests when device:list is denied. UI checks passed 25/25.

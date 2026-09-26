@@ -6,8 +6,7 @@ const matches = (pattern, permission) =>
   pattern === '*' || pattern === permission ||
   (pattern.endsWith(':*') && permission.startsWith(pattern.slice(0, -1)));
 
-// Resolve from the current database rows, including the full permission catalogue.
-export function resolve(db, { userId, orgId, deviceId = null, now = new Date(), orgOnly = false }) {
+function loadState(db, { userId, orgId, now }) {
   const catalogue = db.prepare('SELECT key FROM permissions ORDER BY key').all().map((row) => row.key);
   const membership = db.prepare(`
     SELECT m.role, m.status FROM memberships m
@@ -19,8 +18,7 @@ export function resolve(db, { userId, orgId, deviceId = null, now = new Date(), 
     const reason = membership?.status === 'suspended' ? 'suspended' : 'not_a_member';
     return {
       role: membership?.status === 'suspended' ? membership.role : null,
-      permissions: Object.fromEntries(catalogue.map((key) =>
-        [key, { effect: 'deny', source: null, reason }])),
+      catalogue, reason,
     };
   }
 
@@ -36,43 +34,51 @@ export function resolve(db, { userId, orgId, deviceId = null, now = new Date(), 
     ORDER BY g.id
   `).all(userId, orgId, time, time);
 
+  return { role: membership.role, catalogue, baseline, grants };
+}
+
+function permissionSet(state, deviceIds) {
+  if (state.reason) return Object.fromEntries(state.catalogue.map((key) =>
+    [key, { effect: 'deny', source: null, reason: state.reason }]));
+
   function atScope(permission, scope) {
-    const applicable = grants.filter((grant) =>
+    const applicable = state.grants.filter((grant) =>
       (grant.device_id === null || grant.device_id === scope) &&
       matches(grant.permission, permission));
     const denial = applicable.find((grant) => grant.effect === 'deny');
     if (denial) return { effect: 'deny', source: `grant:${denial.id}`, reason: 'explicit_deny' };
-    if (baseline.has(permission)) {
-      return { effect: 'allow', source: `role:${membership.role}`, reason: null };
+    if (state.baseline.has(permission)) {
+      return { effect: 'allow', source: `role:${state.role}`, reason: null };
     }
     const allowance = applicable.find((grant) => grant.effect === 'allow');
     if (allowance) return { effect: 'allow', source: `grant:${allowance.id}`, reason: null };
     return { effect: 'deny', source: null, reason: 'implicit' };
   }
 
-  const deviceIds = orgOnly ? [] : deviceId === null
-    ? db.prepare('SELECT id FROM devices WHERE org_id = ? AND deleted_at IS NULL ORDER BY id')
-      .all(orgId).map((row) => row.id)
-    : [deviceId];
   const permissions = {};
-  for (const key of catalogue) {
+  for (const key of state.catalogue) {
     const answers = deviceIds.map((id) => atScope(key, id));
     permissions[key] = answers.find((answer) => answer.effect === 'allow') ??
       answers.find((answer) => answer.reason === 'explicit_deny') ??
       atScope(key, null);
   }
-  return { role: membership.role, permissions };
+  return permissions;
+}
+
+// Resolve from the current database rows, including the full permission catalogue.
+export function resolve(db, { userId, orgId, deviceId = null, now = new Date(), orgOnly = false }) {
+  const state = loadState(db, { userId, orgId, now });
+  const deviceIds = state.reason || orgOnly ? [] : deviceId === null
+    ? db.prepare('SELECT id FROM devices WHERE org_id = ? AND deleted_at IS NULL ORDER BY id')
+      .all(orgId).map((row) => row.id)
+    : [deviceId];
+  return { role: state.role, permissions: permissionSet(state, deviceIds) };
 }
 
 export function resolveDevices(db, { userId, orgId, deviceIds, now = new Date() }) {
-  const byDevice = {};
-  let role = deviceIds.length ? null : resolve(db, { userId, orgId, now }).role;
-  for (const deviceId of deviceIds) {
-    const result = resolve(db, { userId, orgId, deviceId, now });
-    role = result.role;
-    byDevice[deviceId] = result.permissions;
-  }
-  return { role, byDevice };
+  const state = loadState(db, { userId, orgId, now });
+  return { role: state.role, byDevice: Object.fromEntries(deviceIds.map((id) =>
+    [id, permissionSet(state, [id])])) };
 }
 
 export function can(db, ctx, permission, deviceId = null) {

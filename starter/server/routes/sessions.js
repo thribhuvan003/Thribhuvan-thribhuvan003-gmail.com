@@ -2,7 +2,7 @@ import { audit, auditDenials } from '../audit.js';
 import { newId, nowIso } from '../db.js';
 import { badRequest, deviceBusy, forbidden, notFound, send } from '../http.js';
 import { sessionExpiry, snapshotAuthority } from '../lifecycle.js';
-import { assertCan, assertCanStartSession, can } from '../permissions.js';
+import { assertCan, assertCanStartSession, can, resolveDevices } from '../permissions.js';
 
 export function registerSessionRoutes(router, { db }) {
   function expireSessions(orgId) {
@@ -59,8 +59,11 @@ export function registerSessionRoutes(router, { db }) {
     expireSessions(ctx.orgId);
     const sessions = db.prepare(`
       SELECT * FROM sessions WHERE org_id = ? ORDER BY started_at DESC
-    `).all(ctx.orgId).filter((row) => can(db, ctx, 'session:view', row.device_id));
-    send(res, 200, { sessions });
+    `).all(ctx.orgId);
+    const { byDevice } = resolveDevices(db, { userId: ctx.userId, orgId: ctx.orgId,
+      deviceIds: [...new Set(sessions.map((row) => row.device_id))] });
+    send(res, 200, { sessions: sessions.filter((row) =>
+      byDevice[row.device_id]['session:view']?.effect === 'allow') });
   });
 
   router.get('/v1/sessions/:id', (ctx, params, res) => {
