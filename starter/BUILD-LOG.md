@@ -23,3 +23,7 @@ Live checks passed for org isolation, hidden device rows and audit access.
 ## Phase 7 — sessions
 Added session start, list, view and stop. Each start stores an authority snapshot and expiry.
 Live checks passed for compound permissions, exclusive control, expiry time and audit rows.
+## Phase 8 — members
+Added org creation and member role, suspend, reinstate, remove and leave routes.
+Live checks passed for last owner, stale tokens and session endings.
+Reinstate now refuses invited memberships; checked that separately.
