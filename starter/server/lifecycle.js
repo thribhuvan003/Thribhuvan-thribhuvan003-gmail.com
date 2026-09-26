@@ -48,10 +48,10 @@ export function snapshotAuthority(db, { userId, orgId, deviceId }) {
   return resolve(db, { userId, orgId, deviceId });
 }
 
-export function sessionExpiry(db, orgId) {
+export function sessionExpiry(db, orgId, startedAt = nowIso()) {
   const org = db.prepare(`
     SELECT max_session_minutes FROM organizations WHERE id = ? AND deleted_at IS NULL
   `).get(orgId);
   if (!org) throw notFound();
-  return new Date(Date.now() + org.max_session_minutes * 60_000).toISOString();
+  return new Date(new Date(startedAt).getTime() + org.max_session_minutes * 60_000).toISOString();
 }

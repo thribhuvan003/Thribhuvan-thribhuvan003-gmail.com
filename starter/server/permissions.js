@@ -117,7 +117,7 @@ export function assertMayGrant(db, ctx, patterns, deviceId = null) {
 }
 
 export function assertCanStartSession(db, ctx, mode, deviceId) {
-  if (!MODE_PERMISSION[mode]) throw badRequest('invalid session mode');
+  if (!Object.hasOwn(MODE_PERMISSION, mode)) throw badRequest('invalid session mode');
   if (!can(db, ctx, 'session:start', deviceId)) throw forbidden('forbidden', 'missing_permission');
   if (!can(db, ctx, MODE_PERMISSION[mode], deviceId)) {
     throw forbidden('forbidden', 'missing_device_permission');
