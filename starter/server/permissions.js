@@ -91,11 +91,8 @@ export function assertCan(db, ctx, permission, deviceId = null) {
 
 export function assertMayGrant(db, ctx, patterns, deviceId = null) {
   const catalogue = db.prepare('SELECT key FROM permissions').all().map((row) => row.key);
-  const validPatterns = new Set(db.prepare('SELECT pattern FROM permission_patterns')
-    .all().map((row) => row.pattern));
   const requested = new Set();
   for (const pattern of patterns) {
-    if (!validPatterns.has(pattern)) throw badRequest('unknown permission');
     for (const permission of catalogue.filter((key) => matches(pattern, key))) {
       requested.add(permission);
     }

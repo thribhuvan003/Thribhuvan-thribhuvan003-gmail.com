@@ -33,3 +33,6 @@ Live checks passed; the generated DB is back to the seed state.
 ## Phase 10 — device changes
 Added create, update, delete and transfer. Hidden devices return 404 on writes.
 Checked duplicate names, cross-org access, target permissions and session end on transfer using a throwaway DB. Build, JWT, permissions and personalisation checks pass.
+## Phase 11 — grants and invites
+Added grant create/list/revoke and invite issue/list/revoke/accept. The grant permission FK rejects unknown names.
+The first API run passed 58 checks and failed the 8 invite checks because those routes were still missing. After adding them, all 66 passed.
