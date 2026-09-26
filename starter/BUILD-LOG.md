@@ -7,3 +7,7 @@ Build works. `npm start` has a Windows env issue, will fix that later.
 ### 2026-09-26
 Added token checks for format, HS256, signature, expiry, issuer, audience and jti.
 `check-jwt.js`: 43/43 pass.
+## Phase 2 — caller context
+### 2026-09-26
+Bearer token now loads the current membership. Wrong org returns 404, stale token 401, suspended member 403.
+Checked those cases against the seeded DB; all pass.

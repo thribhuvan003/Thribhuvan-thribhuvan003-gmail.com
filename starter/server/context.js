@@ -1,29 +1,40 @@
-// Per-request context: turn a bearer token into an authenticated caller.
-//
-// YOURS TO WRITE. This file ships as a stub so the server boots and every
-// authenticated request fails loudly instead of appearing to work.
-//
-// What it has to do (BRIEF.md §3, PERMISSIONS.md §6):
-//   - read the bearer token, verify it with verifyAccessToken() from ./auth.js
-//   - look the membership up and refuse a token whose org or membership is gone
-//   - THE TOKEN'S org CLAIM IS THE ONLY ORG THE CALLER MAY ADDRESS. A request that
-//     names a different org is INVISIBLE — 404, never 403. Isolation is structural:
-//     the caller cannot name another org, rather than being filtered afterwards.
-//   - check freshness against memberships.perm_version (AUTH-DATA-MODEL.md §3), so a
-//     role or grant change takes effect on the NEXT request, not at token expiry
-//   - throw through the one error path in ./http.js
-//
-// authenticate(db, secret) returns (req, params) => caller, where caller carries at
-// least { userId, orgId, role, membership, claims }.
-
-const todo = () =>
-  Object.assign(
-    new Error('TODO: server/context.js — authenticate() is yours to write (BRIEF.md §3).'),
-    { code: 'NOT_IMPLEMENTED' }
-  );
+// Turn a bearer token into the current membership for this request.
+import { assertFresh, verifyAccessToken } from './auth.js';
+import { forbidden, notFound, unauthenticated } from './http.js';
 
 export function authenticate(db, secret) {
   return function buildContext(req, params) {
-    throw todo();
+    const authorization = req.headers.authorization;
+    const match = typeof authorization === 'string' && /^Bearer (\S+)$/i.exec(authorization);
+    if (!match) throw unauthenticated();
+
+    const claims = verifyAccessToken(match[1], secret);
+    if (typeof claims.sub !== 'string' || !claims.sub ||
+        typeof claims.org !== 'string' || !claims.org) {
+      throw unauthenticated();
+    }
+
+    const requestedOrg = params.org ?? params.orgId;
+    if (requestedOrg !== undefined && requestedOrg !== claims.org) throw notFound();
+
+    const membership = db.prepare(`
+      SELECT m.* FROM memberships m
+      JOIN organizations o ON o.id = m.org_id
+      WHERE m.user_id = ? AND m.org_id = ? AND o.deleted_at IS NULL
+    `).get(claims.sub, claims.org);
+
+    if (!membership || membership.status === 'removed' || membership.status === 'invited') {
+      throw unauthenticated();
+    }
+    if (membership.status === 'suspended') throw forbidden('forbidden', 'suspended');
+    assertFresh(claims, membership);
+
+    return {
+      userId: membership.user_id,
+      orgId: membership.org_id,
+      role: membership.role,
+      membership,
+      claims,
+    };
   };
 }
