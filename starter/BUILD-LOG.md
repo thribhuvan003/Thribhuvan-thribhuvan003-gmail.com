@@ -27,3 +27,6 @@ Live checks passed for compound permissions, exclusive control, expiry time and 
 Added org creation and member role, suspend, reinstate, remove and leave routes.
 Live checks passed for last owner, stale tokens and session endings.
 Reinstate now refuses invited memberships; checked that separately.
+## Phase 9 — org changes
+Added rename and soft delete. Delete ends sessions and removes memberships.
+Live checks passed; the generated DB is back to the seed state.
