@@ -60,7 +60,7 @@
 `WORKFLOW.md` says a short `NOTES.md` at the repo root is enough. `starter/README.md` and `starter/DISCOVERY-BRIEF.md` name `DECISIONS.md` inside `starter/`. The hiring email requires both write-ups at the repository root, so I moved them there. Git can follow the earlier log commits through the move.
 
 ## Tools used
-Codex helped implement and review the code and write-ups. I checked the behavior with the shipped JWT, permissions, personalisation, API and UI suites, and ran the app in dev and production mode.
+ChatGPT Co-worker helped implement and review the code and write-ups. I checked the behavior with the shipped JWT, permissions, personalisation, API and UI suites, and ran the app in dev and production mode.
 
 ## Deliberately not built
 Email delivery, password reset and rate limiting. `starter/README.md` leaves these outside this exercise; invite tokens are returned by the API for the demo.
