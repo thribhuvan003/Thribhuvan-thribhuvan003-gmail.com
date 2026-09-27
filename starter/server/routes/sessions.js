@@ -47,7 +47,14 @@ export function registerSessionRoutes(router, { db }) {
           return session(id, ctx.orgId);
         })();
       } catch (err) {
-        if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') throw deviceBusy();
+        if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+          const holder = db.prepare(`
+            SELECT id FROM sessions
+            WHERE org_id = ? AND device_id = ? AND state IN ('connecting', 'active')
+              AND mode IN ('control', 'terminal') AND expires_at > ?
+          `).get(ctx.orgId, deviceId, nowIso());
+          throw deviceBusy(holder ? `device already held by session ${holder.id}` : undefined);
+        }
         throw err;
       }
       send(res, 201, created);
@@ -75,6 +82,7 @@ export function registerSessionRoutes(router, { db }) {
   });
 
   router.delete('/v1/sessions/:id', (ctx, params, res) => {
+    expireSessions(ctx.orgId);
     const row = session(params.id, ctx.orgId);
     if (!row) throw notFound();
     const meta = { action: 'session:stop', targetType: 'session', targetId: row.id };

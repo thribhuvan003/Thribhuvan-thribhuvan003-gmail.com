@@ -54,3 +54,6 @@ The hiring email says both write-ups belong at the repository root, while the st
 ## Phase 16 — rejoin
 I expected removal to clear old authority. A throwaway API check showed a removed viewer invited back as auditor still got `device:control` from an old grant.
 Removal and self-leave now revoke live grants. Suspension keeps them for reinstatement. Seven edge checks and the public API suite (66/66) pass.
+## Phase 17 — edge checks
+A busy device error missed the holder session ID. The effective-permissions route also showed existing users before they accepted an invite, and stopping an expired session wrote the wrong reason. Fixed those three cases.
+Focused checks pass. API 66/66 and UI 25/25 pass.

@@ -26,7 +26,8 @@ export function registerOrgReads(router, { db }) {
   router.get('/v1/orgs/:org/users/:userId/effective', (ctx, params, res) => {
     if (params.userId !== ctx.userId) assertCan(db, ctx, 'user:read');
     const member = db.prepare(`
-      SELECT 1 FROM memberships WHERE org_id = ? AND user_id = ? AND status <> 'removed'
+      SELECT 1 FROM memberships WHERE org_id = ? AND user_id = ?
+        AND status IN ('active', 'suspended')
     `).get(ctx.orgId, params.userId);
     if (!member) throw notFound();
     send(res, 200, resolve(db, { userId: params.userId, orgId: ctx.orgId }));
