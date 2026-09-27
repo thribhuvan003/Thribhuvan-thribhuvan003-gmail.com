@@ -57,3 +57,6 @@ Removal and self-leave now revoke live grants. Suspension keeps them for reinsta
 ## Phase 17 — edge checks
 A busy device error missed the holder session ID. The effective-permissions route also showed existing users before they accepted an invite, and stopping an expired session wrote the wrong reason. Fixed those three cases.
 Focused checks pass. API 66/66 and UI 25/25 pass.
+## Phase 18 — refresh after changes
+An open viewer page hit `TOKEN_STALE` after a grant changed and did not show the new button. The console now refreshes its token and retries that request. Parallel reads share one refresh.
+The browser check failed before the fix and passed after it, including a role change. Build and UI 25/25 pass.

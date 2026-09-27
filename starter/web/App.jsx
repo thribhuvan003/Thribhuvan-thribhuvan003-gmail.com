@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 async function api(path, { method = 'GET', token, body } = {}) {
   let response;
@@ -106,6 +106,7 @@ export default function App() {
   const [devices, setDevices] = useState([]);
   const [grantForm, setGrantForm] = useState(false);
   const [grant, setGrant] = useState({ userId: '', deviceId: '', effect: 'allow', permissions: [] });
+  const refreshRequest = useRef(null);
 
   useEffect(() => {
     if (skipRefresh || path.startsWith('/invite/')) { setBooting(false); return; }
@@ -124,10 +125,25 @@ export default function App() {
     try { enter(await api('/auth/login', { method: 'POST', body: { email, password } })); }
     catch (err) { setLoginError(err); }
   }
+  async function authed(path, { method = 'GET', body } = {}) {
+    try {
+      return await api(path, { method, body, token: session.token });
+    } catch (err) {
+      if (err.code !== 'TOKEN_STALE' && err.code !== 'UNAUTHENTICATED') throw err;
+      if (!refreshRequest.current) {
+        refreshRequest.current = api('/auth/refresh', {
+          method: 'POST', body: { orgId: session.orgId },
+        }).then((fresh) => { setSession(fresh); return fresh; })
+          .finally(() => { refreshRequest.current = null; });
+      }
+      const fresh = await refreshRequest.current;
+      return api(path, { method, body, token: fresh.token });
+    }
+  }
   async function switchOrg(orgId) {
     if (orgId === session.orgId) return;
-    try { enter(await api('/auth/token', {
-      method: 'POST', token: session.token, body: { orgId },
+    try { enter(await authed('/auth/token', {
+      method: 'POST', body: { orgId },
     })); } catch (err) { setMessage(err.message); }
   }
 
@@ -135,8 +151,7 @@ export default function App() {
     if (!session) return;
     let live = true;
     setRows([]); setMembers([]); setDevices([]);
-    const read = (name) => api(`/orgs/${encodeURIComponent(session.orgId)}/${name}`,
-      { token: session.token });
+    const read = (name) => authed(`/orgs/${encodeURIComponent(session.orgId)}/${name}`);
     async function load() {
       try {
         if (view === 'devices') {
@@ -181,7 +196,7 @@ export default function App() {
   async function change(path, method, body, after) {
     setMessage(null);
     try {
-      const result = await api(path, { method, token: session.token, body });
+      const result = await authed(path, { method, body });
       if (after) await after(result);
       setReload((value) => value + 1);
       return result;
@@ -207,8 +222,8 @@ export default function App() {
         if (!name) return;
         const created = await change('/orgs', 'POST', { name });
         if (created) {
-          try { enter(await api('/auth/token', {
-            method: 'POST', token: session.token, body: { orgId: created.id },
+          try { enter(await authed('/auth/token', {
+            method: 'POST', body: { orgId: created.id },
           })); } catch (err) { setMessage(err.message); }
         }
       }}>+ Create organization</button>
@@ -227,7 +242,7 @@ export default function App() {
         <strong data-testid="active-role">{session.role}</strong>
         <button className="quiet" onClick={async () => {
           try {
-            await api('/auth/logout', { method: 'POST', token: session.token });
+            await authed('/auth/logout', { method: 'POST' });
             setSession(null);
             window.history.replaceState(null, '', '/');
           } catch (err) { setMessage(err.message); }
