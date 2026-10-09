@@ -45,8 +45,8 @@ function Login({ onLogin, error, clearError }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   return <main className="entry-screen"><div className="entry-card">
-    <p className="eyebrow">RhinoStream / RemoteOps</p><h1>Sign in</h1>
-    <p className="muted">Open your organization console.</p>
+    <p className="eyebrow">Teamroom</p><h1>Sign in</h1>
+    <p className="muted">Chat, call, and coordinate with your invited team.</p>
     <form data-testid="login-form" noValidate onSubmit={(event) => {
       event.preventDefault(); clearError(); onLogin(email, password);
     }}>
@@ -74,7 +74,7 @@ function Invite({ token, done }) {
     return () => { live = false; };
   }, [token]);
   return <main className="entry-screen"><div className="entry-card">
-    <p className="eyebrow">RhinoStream / RemoteOps</p><h1>Invitation</h1>
+    <p className="eyebrow">Teamroom</p><h1>Invitation</h1>
     {invite && <>
       <p>You were invited to {invite.orgName} as <strong data-testid="invite-role">{invite.role}</strong>.</p>
       <form onSubmit={async (event) => {
@@ -231,7 +231,7 @@ export default function App() {
   return <div className="shell" data-testid="app-shell" data-org-id={session.orgId}
     data-org-theme={org?.theme || 'cobalt'}>
     <aside className={`sidebar ${menuOpen ? 'menu-open' : ''}`}>
-      <div className="brand"><span className="brand-mark">R</span><span>RemoteOps<small>RhinoStream</small></span></div>
+      <div className="brand"><span className="brand-mark">T</span><span>Teamroom<small>Play & create</small></span></div>
       <button type="button" className="workspace-toggle" aria-expanded={menuOpen}
         aria-controls="workspace-navigation" onClick={() => setMenuOpen((open) => !open)}>
         {menuOpen ? 'Close menu' : 'Workspace ▾'}</button>
