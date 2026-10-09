@@ -129,7 +129,7 @@ export default function App() {
   const [view, setView] = useState('devices');
   const [menuOpen, setMenuOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
-  const [callActive, setCallActive] = useState(false);
+  const [chatUnread, setChatUnread] = useState(0);
   const lastWorkspaceView = useRef('devices');
   const [reload, setReload] = useState(0);
   const [rows, setRows] = useState([]);
@@ -151,7 +151,7 @@ export default function App() {
     setRows([]); setMembers([]); setDevices([]);
     setCatalogue([]);
     setInviteOpen(false);
-    setChatOpen(false); setCallActive(false); lastWorkspaceView.current = 'devices';
+    setChatOpen(false); setChatUnread(0); lastWorkspaceView.current = 'devices';
     setView('devices'); setMessage(null); setSession(data);
     window.history.replaceState(null, '', `/?org=${encodeURIComponent(data.orgId)}`);
   }
@@ -290,7 +290,9 @@ export default function App() {
             if (key === 'chat') setChatOpen(true);
             else lastWorkspaceView.current = key;
             setView(key); setReload((value) => value + 1); setMessage(null); }}>
-          {label}</button>;
+          {label}{key === 'chat' && chatUnread > 0 && <span className="chat-unread-badge"
+            data-testid="chat-unread" aria-label={`${chatUnread} unread messages`}>
+            {chatUnread > 99 ? '99+' : chatUnread}</span>}</button>;
       })}</nav>
       <div className="sidebar-foot"><span>{session.user.name}</span>
         <strong data-testid="active-role">{session.role}</strong>
@@ -311,7 +313,9 @@ export default function App() {
             aria-expanded={view === 'chat' || chatOpen} onClick={() => {
               if (view === 'chat') { setChatOpen(true); setView(lastWorkspaceView.current); }
               else setChatOpen((open) => !open);
-            }}>{view === 'chat' ? 'Dock chat ↘' : chatOpen ? 'Close chat' : 'Open chat'}</button>
+            }}>{view === 'chat' ? 'Dock chat ↘' : chatOpen ? 'Close chat' : 'Open chat'}
+            {chatUnread > 0 && <span className="chat-unread-badge" data-testid="chat-unread-toggle"
+              aria-label={`${chatUnread} unread messages`}>{chatUnread > 99 ? '99+' : chatUnread}</span>}</button>
           <span className="org-badge">{session.role}</span>
         </div></header>
       {message && <p className="notice" role="status">{message}</p>}
@@ -394,10 +398,10 @@ export default function App() {
             </td></tr>)}</tbody></table></div>
       </section>}
 
-      {(view === 'chat' || chatOpen || callActive) && <div className={view === 'chat' ? 'chat-host-full' : 'chat-host-docked'}
+      <div className={view === 'chat' ? 'chat-host-full' : 'chat-host-docked'}
         data-testid={view === 'chat' ? 'chat-full' : 'chat-dock'}>
         <Chat key={session.orgId} session={session} authed={authed} compact={view !== 'chat'}
-        hidden={view !== 'chat' && !chatOpen} onCallStateChange={setCallActive}
+        hidden={view !== 'chat' && !chatOpen} onUnreadChange={setChatUnread}
         onClose={() => setChatOpen(false)} onExpand={() => setView('chat')}
         onFloat={() => { setChatOpen(true); setView(lastWorkspaceView.current); }}
         onMembers={allowed('user:read') ? () => setView('people') : null}
@@ -409,7 +413,7 @@ export default function App() {
             }
             throw err;
           }
-        }} /></div>}
+        }} /></div>
 
       {view === 'audit' && <section className="panel"><h2>Audit</h2>
         <div className="table-wrap"><table><thead><tr><th>When</th><th>Action</th><th>Result</th><th>Reason</th></tr></thead>

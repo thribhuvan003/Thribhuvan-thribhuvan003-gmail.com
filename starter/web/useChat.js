@@ -6,7 +6,7 @@ function merge(current, incoming) {
   return [...byId.values()].sort((a, b) => a.seq - b.seq);
 }
 
-export function useChat({ session, authed, onAuthExpired }) {
+export function useChat({ session, authed, onAuthExpired, onIncoming }) {
   const [messages, setMessages] = useState([]);
   const [pending, setPending] = useState([]);
   const [cursor, setCursor] = useState(null);
@@ -21,9 +21,10 @@ export function useChat({ session, authed, onAuthExpired }) {
   const checkpoint = useRef(0);
   const generation = useRef(0);
   const outbox = useRef(new Map());
-  const callbacks = useRef({ authed, onAuthExpired });
+  const received = useRef(new Set());
+  const callbacks = useRef({ authed, onAuthExpired, onIncoming });
   const callListeners = useRef(new Set());
-  callbacks.current = { authed, onAuthExpired };
+  callbacks.current = { authed, onAuthExpired, onIncoming };
 
   const sendPacket = useCallback((packet) => {
     if (socketRef.current?.readyState !== WebSocket.OPEN) return false;
@@ -36,8 +37,12 @@ export function useChat({ session, authed, onAuthExpired }) {
   }, []);
 
   function showOutbox() { setPending([...outbox.current.values()].map(({ timer, ...item }) => item)); }
-  function receive(incoming) {
+  function receive(incoming, notify = false) {
     for (const message of incoming) {
+      if (notify && !received.current.has(message.id) && message.sender.id !== session.user.id) {
+        callbacks.current.onIncoming?.();
+      }
+      received.current.add(message.id);
       checkpoint.current = Math.max(checkpoint.current, message.seq);
       if (message.sender.id === session.user.id && outbox.current.has(message.clientId)) {
         clearTimeout(outbox.current.get(message.clientId).timer);
@@ -83,7 +88,7 @@ export function useChat({ session, authed, onAuthExpired }) {
         const page = await callbacks.current.authed(
           `/orgs/${encodeURIComponent(session.orgId)}/chat/messages${query}`);
         if (!active()) return;
-        receive(page.messages);
+        receive(page.messages, !initial);
         if (initial) { setCursor(page.nextCursor); break; }
         after = page.nextCursor;
       } while (after !== null);
@@ -139,7 +144,7 @@ export function useChat({ session, authed, onAuthExpired }) {
         } else if (packet.type === 'rtc_signal') {
           for (const listener of callListeners.current) listener(packet);
         } else if (packet.type === 'message' || packet.type === 'ack') {
-          receive([packet.message]);
+          receive([packet.message], packet.type === 'message');
         } else if (packet.type === 'error') {
           const item = outbox.current.get(packet.clientId);
           if (item) { clearTimeout(item.timer); item.state = 'failed'; showOutbox(); }

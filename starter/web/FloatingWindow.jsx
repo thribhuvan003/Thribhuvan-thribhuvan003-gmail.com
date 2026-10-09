@@ -4,7 +4,7 @@ import Icon from './Icons.jsx';
 let frontLayer = 40;
 
 export default function FloatingWindow({ enabled = true, title, label, testId, className = '',
-  corner = 'bottom-right', collapseContent = true, onExpand, onClose, children }) {
+  corner = 'bottom-right', collapseContent = true, onExpand, onClose, onMinimizeChange, children }) {
   const ref = useRef(null);
   const position = useRef(null);
   const drag = useRef(null);
@@ -35,7 +35,7 @@ export default function FloatingWindow({ enabled = true, title, label, testId, c
   }
 
   useLayoutEffect(() => {
-    if (!enabled) return;
+    if (!enabled) { setMinimized(false); onMinimizeChange?.(false); return; }
     if (position.current) place(position.current.x, position.current.y);
     else reset();
     const fit = () => { if (position.current) place(position.current.x, position.current.y); };
@@ -100,7 +100,7 @@ export default function FloatingWindow({ enabled = true, title, label, testId, c
       <div className="floating-actions">
         <button type="button" aria-label={`${minimized ? 'Restore' : 'Minimize'} ${label}`}
           title={minimized ? 'Restore window' : 'Minimize window'}
-          onClick={() => setMinimized((value) => !value)}><Icon name={minimized ? 'expand' : 'minimize'} size={16} /></button>
+          onClick={() => { setMinimized(!minimized); onMinimizeChange?.(!minimized); }}><Icon name={minimized ? 'expand' : 'minimize'} size={16} /></button>
         {onExpand && <button type="button" aria-label={`Expand ${label}`} title="Open full chat"
           onClick={onExpand}><Icon name="expand" size={16} /></button>}
         {onClose && <button type="button" aria-label={`Close ${label}`} title={label === 'video call' ? 'Leave call' : 'Close chat'}

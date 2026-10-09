@@ -119,3 +119,9 @@ move or minimize. The server suite passed 9 checks. The shared owner login is en
 The reported cross-network call failure needs TURN; a Metered relay credential is configured in
 Railway's WEBRTC_ICE_SERVERS variable. The no-card relay trial has a 500 MB allowance. Relay
 credentials stay in hosting configuration, outside Git.
+
+An unread badge now appears beside Chat and the chat toggle. The active workspace keeps one chat
+connection open while signed in, even with the window closed. Messages from other people count
+while chat is closed, minimized or in a background tab, then clear when opened. Own messages,
+initial history and duplicate broadcasts don't increase it. Reconnect catch-up counts missed
+messages once. Counts apply to the current workspace and reset on a fresh sign-in or reload.

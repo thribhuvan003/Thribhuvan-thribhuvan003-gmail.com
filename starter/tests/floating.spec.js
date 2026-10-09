@@ -68,7 +68,10 @@ test('floating chat keeps its draft through dragging, minimizing and expanding',
   mkdirSync('data', { recursive: true });
   await page.screenshot({ path: 'data/floating-chat-local.png', fullPage: true });
   await page.getByRole('button', { name: 'Close team chat', exact: true }).click();
-  await expect(window).toHaveCount(0);
+  await expect(window).toBeHidden();
+  await page.getByTestId('toggle-chat').click();
+  await expect(window).toBeVisible();
+  await expect(page.getByTestId('chat-input')).toHaveValue(draft);
 });
 
 test('keyboard movement and resizing keep the floating chat reachable on mobile', async ({ page }) => {

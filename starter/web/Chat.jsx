@@ -24,8 +24,15 @@ function SendIcon() {
 }
 
 export default function Chat({ session, authed, onAuthExpired, onMembers, compact, hidden,
-  onClose, onExpand, onFloat, onCallStateChange }) {
-  const chat = useChat({ session, authed, onAuthExpired });
+  onClose, onExpand, onFloat, onUnreadChange }) {
+  const [minimized, setMinimized] = useState(false);
+  const [pageVisible, setPageVisible] = useState(document.visibilityState !== 'hidden');
+  const [unread, setUnread] = useState(0);
+  const readable = !hidden && (!compact || !minimized) && pageVisible;
+  const readableRef = useRef(readable);
+  readableRef.current = readable;
+  const chat = useChat({ session, authed, onAuthExpired,
+    onIncoming: () => { if (!readableRef.current) setUnread((count) => count + 1); } });
   const call = useVideoCall({ chat });
   const [text, setText] = useState('');
   const historyRef = useRef(null);
@@ -34,7 +41,13 @@ export default function Chat({ session, authed, onAuthExpired, onMembers, compac
   const org = session.orgs.find((item) => item.id === session.orgId);
   const connected = chat.status === 'connected';
 
-  useEffect(() => { onCallStateChange?.(call.joined); }, [call.joined, onCallStateChange]);
+  useEffect(() => {
+    const update = () => setPageVisible(document.visibilityState !== 'hidden');
+    document.addEventListener('visibilitychange', update);
+    return () => document.removeEventListener('visibilitychange', update);
+  }, []);
+  useEffect(() => { if (readable) setUnread(0); }, [readable]);
+  useEffect(() => { onUnreadChange?.(unread); }, [unread, onUnreadChange]);
 
   useEffect(() => {
     const area = historyRef.current;
@@ -43,7 +56,7 @@ export default function Chat({ session, authed, onAuthExpired, onMembers, compac
       area.scrollTop = olderPosition.current.top + area.scrollHeight - olderPosition.current.height;
       olderPosition.current = null;
     } else if (nearBottom.current) area.scrollTop = area.scrollHeight;
-  }, [chat.messages, chat.pending]);
+  }, [chat.messages, chat.pending, readable]);
 
   function send(event) {
     event.preventDefault();
@@ -57,10 +70,12 @@ export default function Chat({ session, authed, onAuthExpired, onMembers, compac
   }
 
   return <>
-    <FloatingWindow enabled={compact && !hidden} title="Team chat" label="team chat"
+    <FloatingWindow enabled={compact && !hidden} title={<>
+      Team chat {unread > 0 && <span className="chat-unread-badge">{unread > 99 ? '99+' : unread}</span>}
+    </>} label="team chat"
       corner="top-left"
       testId="chat-window" className={`floating-chat ${hidden ? 'chat-window-hidden' : ''}`}
-      onClose={onClose} onExpand={onExpand}>
+      onClose={onClose} onExpand={onExpand} onMinimizeChange={setMinimized}>
     <section className={`team-chat ${compact ? 'compact' : ''}`} data-testid="chat-panel">
     <div className="chat-main">
       <header className="chat-head">

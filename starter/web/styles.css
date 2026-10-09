@@ -73,6 +73,9 @@ input, select, textarea { border: 1px solid #cbd5e1; border-radius: 8px; padding
 .content-head .eyebrow { margin-bottom: 4px; }
 .workspace-tools { display: flex; gap: 12px; align-items: center; }
 .workspace-chat-toggle { font-size: 11px; border-color: #dce5dc; background: #fff; color: #517461; }
+.chat-unread-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 19px; height: 19px; padding: 0 5px; margin-left: 8px; border-radius: 6px; color: #fff; background: #347b55; font-size: 10px; font-weight: 750; line-height: 1; vertical-align: middle; }
+.sidebar .chat-unread-badge { float: right; background: #dff2e5; color: #24553b; }
+.window-drag-handle .chat-unread-badge { height: 16px; min-width: 16px; margin-left: 5px; font-size: 9px; }
 .org-badge { background: #dceafa; color: #275a91; padding: 7px 12px; border-radius: 999px; text-transform: capitalize; font-size: 12px; font-weight: 800; }
 .panel { background: white; border: 1px solid #e0e6ee; border-radius: 13px; padding: 22px; box-shadow: 0 3px 12px #23324d08; }
 .panel-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 15px; }
