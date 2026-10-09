@@ -86,6 +86,7 @@ Set `DATABASE_FILE` to a persistent volume, terminate HTTPS at the host's proxy,
 upgrades, and run one replica. Keep database backups. Don't use `db:reset` on live data. Global
 login throttling and backup/restore operations remain deployment work before public release.
 
-The Dockerfile builds the app and calls the live startup script. No hosting account has been
-selected yet, so this branch has not been published. These changes are a product prototype and
-haven't been merged into the submitted assessment branch.
+The Dockerfile builds the app and calls the live startup script. Its entrypoint prepares the
+mounted data directory, then runs Node as the node user. Railway mounts volumes as root, so the
+directory needs its ownership set at startup. A Railway deployment is being configured on the
+feature branch. These changes haven't been merged into the submitted assessment branch.
