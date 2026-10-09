@@ -1,8 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useChat } from './useChat.js';
 import { useVideoCall } from './useVideoCall.js';
 import VideoCall from './VideoCall.jsx';
 import { participantColor } from './participantColor.js';
+import FloatingWindow from './FloatingWindow.jsx';
+import Icon from './Icons.jsx';
 
 const initials = (name) => name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
 const dayLabel = (value) => {
@@ -20,15 +23,18 @@ function SendIcon() {
   </svg>;
 }
 
-export default function Chat({ session, authed, onAuthExpired, onMembers, compact, onClose, onExpand }) {
+export default function Chat({ session, authed, onAuthExpired, onMembers, compact, hidden,
+  onClose, onExpand, onFloat, onCallStateChange }) {
   const chat = useChat({ session, authed, onAuthExpired });
-  const call = useVideoCall({ chat, onExpand });
+  const call = useVideoCall({ chat });
   const [text, setText] = useState('');
   const historyRef = useRef(null);
   const nearBottom = useRef(true);
   const olderPosition = useRef(null);
   const org = session.orgs.find((item) => item.id === session.orgId);
   const connected = chat.status === 'connected';
+
+  useEffect(() => { onCallStateChange?.(call.joined); }, [call.joined, onCallStateChange]);
 
   useEffect(() => {
     const area = historyRef.current;
@@ -50,11 +56,16 @@ export default function Chat({ session, authed, onAuthExpired, onMembers, compac
     if (!await chat.loadOlder()) olderPosition.current = null;
   }
 
-  return <section className={`team-chat ${compact ? 'compact' : ''}`} data-testid="chat-panel">
+  return <>
+    <FloatingWindow enabled={compact && !hidden} title="Team chat" label="team chat"
+      corner="top-left"
+      testId="chat-window" className={`floating-chat ${hidden ? 'chat-window-hidden' : ''}`}
+      onClose={onClose} onExpand={onExpand}>
+    <section className={`team-chat ${compact ? 'compact' : ''}`} data-testid="chat-panel">
     <div className="chat-main">
       <header className="chat-head">
         <span className="channel-mark" aria-hidden="true">#</span>
-        <div className="channel-title"><h2>team-chat <span className="private-tag">Invite only</span></h2>
+        <div className="channel-title"><h2>Team chat <span className="private-tag">Team channel</span></h2>
           <p>Playtests, creative reviews, and remote workstation handoffs.</p></div>
         <span className={`chat-connection ${chat.status}`} data-testid="chat-status" role="status">
           <span className="connection-dot" />
@@ -62,18 +73,16 @@ export default function Chat({ session, authed, onAuthExpired, onMembers, compac
             'Catching up…' : chat.status === 'offline' ? 'Offline' : 'Connecting…'}
         </span>
         <button type="button" className={`call-toggle ${call.joined ? 'live' : ''}`}
-          data-testid="call-toggle" disabled={!call.joined && !connected}
-          onClick={call.joined ? call.leave : call.join}>
-          {call.joined ? 'Leave video' : call.participants.length ?
+          data-testid="call-toggle" disabled={call.joining || (!call.joined && !connected)}
+          onClick={call.joined ? call.leave : async () => { if (await call.join()) onFloat?.(); }}>
+          <Icon name="video" size={16} />
+          {call.joined ? 'Leave video' : call.joining ? 'Starting…' : call.participants.length ?
             `Join video · ${call.participants.length}` : 'Start video'}</button>
-        {compact && <div className="chat-window-actions">
-          <button type="button" aria-label="Expand team chat" onClick={onExpand}>↗</button>
-          <button type="button" aria-label="Close team chat" onClick={onClose}>×</button>
-        </div>}
+        {!compact && <button type="button" className="chat-float-button" aria-label="Float team chat"
+          title="Move chat into a floating window" onClick={onFloat}><Icon name="float" /></button>}
       </header>
 
-      {call.joined && <VideoCall call={call} peerId={chat.peerId} user={session.user} />}
-      {call.error && <p className="call-error" role="alert">{call.error}</p>}
+      {call.error && !call.joined && <p className="call-error" role="alert">{call.error}</p>}
 
       <div className="chat-history" data-testid="chat-history" ref={historyRef}
         role="log" aria-label="Team messages" aria-live="polite" aria-relevant="additions"
@@ -149,7 +158,7 @@ export default function Chat({ session, authed, onAuthExpired, onMembers, compac
 
     <aside className="chat-team" aria-label="Team information">
       <div className="team-org"><span className="team-org-mark">{initials(org?.name || 'Team')}</span>
-        <h3>{org?.name}</h3><p>Your private workspace</p></div>
+        <h3>{org?.name}</h3><p>Your team workspace</p></div>
       <div className="team-online-head"><h3>Here right now</h3><span>{chat.users.length}</span></div>
       <div className="online-members">{chat.users.map((user) =>
         <div className="online-member" key={user.id} style={participantColor(user.id)}>
@@ -163,5 +172,9 @@ export default function Chat({ session, authed, onAuthExpired, onMembers, compac
       </div>
       {onMembers && <button type="button" className="chat-members-link" onClick={onMembers}>Manage team members ↗</button>}
     </aside>
-  </section>;
+    </section>
+    </FloatingWindow>
+    {call.joined && createPortal(<VideoCall call={call} peerId={chat.peerId} user={session.user}
+      orgName={org?.name} />, document.body)}
+  </>;
 }

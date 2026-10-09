@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-export function useVideoCall({ chat, onExpand }) {
+export function useVideoCall({ chat }) {
   const [joined, setJoined] = useState(false);
+  const [joining, setJoining] = useState(false);
   const [localStream, setLocalStream] = useState(null);
   const [remoteStreams, setRemoteStreams] = useState(new Map());
+  const [remoteMedia, setRemoteMedia] = useState(new Map());
+  const [connections, setConnections] = useState(new Map());
   const [error, setError] = useState(null);
   const [muted, setMuted] = useState(false);
   const [cameraOff, setCameraOff] = useState(false);
   const joinedRef = useRef(false);
+  const joinRequest = useRef(0);
+  const joiningRef = useRef(false);
   const joinedPeer = useRef(null);
   const localRef = useRef(null);
   const peers = useRef(new Map());
@@ -21,6 +26,10 @@ export function useVideoCall({ chat, onExpand }) {
     peers.current.delete(peerId);
     candidates.current.delete(peerId);
     offered.current.delete(peerId);
+    setConnections((current) => { const next = new Map(current); next.delete(peerId); return next; });
+    setRemoteMedia((current) => {
+      const next = new Map(current); next.delete(peerId); return next;
+    });
     setRemoteStreams((current) => {
       if (!current.has(peerId)) return current;
       const next = new Map(current); next.delete(peerId); return next;
@@ -29,7 +38,13 @@ export function useVideoCall({ chat, onExpand }) {
 
   const dropAllPeers = useCallback(() => {
     for (const peerId of [...peers.current.keys()]) dropPeer(peerId);
+    setRemoteMedia(new Map());
   }, [dropPeer]);
+
+  function mediaState() {
+    return { type: 'media', muted: !localRef.current?.getAudioTracks().some((track) => track.enabled),
+      cameraOff: !localRef.current?.getVideoTracks().some((track) => track.enabled) };
+  }
 
   const ensurePeer = useCallback((peerId) => {
     if (peers.current.has(peerId)) return peers.current.get(peerId);
@@ -44,9 +59,12 @@ export function useVideoCall({ chat, onExpand }) {
       setRemoteStreams((current) => new Map(current).set(peerId, stream));
     };
     peer.onconnectionstatechange = () => {
-      if (peer.connectionState === 'failed') setError('A teammate could not connect. Leave and rejoin the call.');
+      if (peers.current.get(peerId) !== peer) return;
+      setConnections((current) => new Map(current).set(peerId, peer.connectionState));
+      if (peer.connectionState === 'failed') setError('The media connection failed. Leave and rejoin; if it happens again, the call relay needs checking.');
     };
     peers.current.set(peerId, peer);
+    transport.current.sendPacket({ type: 'rtc_signal', targetPeerId: peerId, signal: mediaState() });
     return peer;
   }, []);
 
@@ -66,6 +84,9 @@ export function useVideoCall({ chat, onExpand }) {
   }, [ensurePeer]);
 
   const leave = useCallback(() => {
+    joinRequest.current++;
+    joiningRef.current = false;
+    setJoining(false);
     if (joinedRef.current) transport.current.sendPacket({ type: 'call_leave' });
     joinedRef.current = false;
     joinedPeer.current = null;
@@ -86,6 +107,10 @@ export function useVideoCall({ chat, onExpand }) {
     }
     if (!joinedRef.current || packet.type !== 'rtc_signal') return;
     const peerId = packet.fromPeerId;
+    if (packet.signal.type === 'media') {
+      setRemoteMedia((current) => new Map(current).set(peerId, packet.signal));
+      return;
+    }
     try {
       const peer = ensurePeer(peerId);
       if (packet.signal.type === 'offer') {
@@ -129,25 +154,36 @@ export function useVideoCall({ chat, onExpand }) {
   }, [joined, chat.status, chat.peerId, chat.callParticipants, dropPeer, ensurePeer, offerTo]);
 
   async function join() {
-    if (joinedRef.current || chat.status !== 'connected') return;
+    if (joiningRef.current || joinedRef.current || chat.status !== 'connected') return;
+    const request = ++joinRequest.current;
+    joiningRef.current = true;
+    setJoining(true);
     setError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true },
         video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 24, max: 30 } },
       });
+      if (request !== joinRequest.current) {
+        for (const track of stream.getTracks()) track.stop();
+        return;
+      }
       localRef.current = stream;
       joinedRef.current = true;
       setLocalStream(stream);
       setJoined(true);
       setMuted(false);
       setCameraOff(false);
-      onExpand?.();
+      return true;
     } catch (err) {
+      if (request !== joinRequest.current) return;
       setError(err.name === 'NotAllowedError' ?
         'Camera and microphone permission is required to join.' :
         'Camera or microphone is unavailable on this device.');
+    } finally {
+      if (request === joinRequest.current) { joiningRef.current = false; setJoining(false); }
     }
+    return false;
   }
 
   useEffect(() => () => leave(), [leave]);
@@ -156,13 +192,22 @@ export function useVideoCall({ chat, onExpand }) {
     const next = !muted;
     for (const track of localRef.current?.getAudioTracks() ?? []) track.enabled = !next;
     setMuted(next);
+    for (const peerId of peers.current.keys()) transport.current.sendPacket({
+      type: 'rtc_signal', targetPeerId: peerId, signal: mediaState(),
+    });
   }
   function toggleCamera() {
     const next = !cameraOff;
     for (const track of localRef.current?.getVideoTracks() ?? []) track.enabled = !next;
     setCameraOff(next);
+    for (const peerId of peers.current.keys()) transport.current.sendPacket({
+      type: 'rtc_signal', targetPeerId: peerId, signal: mediaState(),
+    });
   }
 
-  return { joined, localStream, remoteStreams, participants: chat.callParticipants, error,
+  const relayAvailable = chat.iceServers.some((server) =>
+    (Array.isArray(server.urls) ? server.urls : [server.urls]).some((url) => /^turns?:/i.test(url)));
+  return { joined, joining, localStream, remoteStreams, remoteMedia, connections, relayAvailable,
+    participants: chat.callParticipants, error,
     muted, cameraOff, join, leave, toggleMute, toggleCamera };
 }

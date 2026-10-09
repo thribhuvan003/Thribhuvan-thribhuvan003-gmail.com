@@ -129,6 +129,7 @@ export default function App() {
   const [view, setView] = useState('devices');
   const [menuOpen, setMenuOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [callActive, setCallActive] = useState(false);
   const lastWorkspaceView = useRef('devices');
   const [reload, setReload] = useState(0);
   const [rows, setRows] = useState([]);
@@ -150,7 +151,7 @@ export default function App() {
     setRows([]); setMembers([]); setDevices([]);
     setCatalogue([]);
     setInviteOpen(false);
-    setChatOpen(false); lastWorkspaceView.current = 'devices';
+    setChatOpen(false); setCallActive(false); lastWorkspaceView.current = 'devices';
     setView('devices'); setMessage(null); setSession(data);
     window.history.replaceState(null, '', `/?org=${encodeURIComponent(data.orgId)}`);
   }
@@ -393,10 +394,12 @@ export default function App() {
             </td></tr>)}</tbody></table></div>
       </section>}
 
-      {(view === 'chat' || chatOpen) && <div className={view === 'chat' ? 'chat-host-full' : 'chat-host-docked'}
+      {(view === 'chat' || chatOpen || callActive) && <div className={view === 'chat' ? 'chat-host-full' : 'chat-host-docked'}
         data-testid={view === 'chat' ? 'chat-full' : 'chat-dock'}>
         <Chat key={session.orgId} session={session} authed={authed} compact={view !== 'chat'}
+        hidden={view !== 'chat' && !chatOpen} onCallStateChange={setCallActive}
         onClose={() => setChatOpen(false)} onExpand={() => setView('chat')}
+        onFloat={() => { setChatOpen(true); setView(lastWorkspaceView.current); }}
         onMembers={allowed('user:read') ? () => setView('people') : null}
         onAuthExpired={async () => {
           try { return await refreshAccess(); }

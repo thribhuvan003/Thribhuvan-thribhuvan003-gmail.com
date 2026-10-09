@@ -107,3 +107,15 @@ before publishing it. Missing or incorrect values keep the panel hidden. This ma
 whole account public, including its workspaces, people, messages and admin actions. Use only test
 content. Friends should accept individual invitations to appear separately in chat and calls.
 Turn the flag off and change the account password before using that account privately again.
+
+Chat and calls now open as separate movable windows, with chat on the left and video on the
+right. Minimize, restore, dragging and closing chat keep the same draft and active call. Keyboard
+arrows move windows, Home resets the position, and resizing the screen keeps controls reachable.
+Own messages align right. Video keeps the full camera frame visible; mute and camera-off state
+are sent to the other participants. Blocked playback shows a button to start video and audio.
+
+The browser suite passed 38 checks, including audio RTP arriving in both directions while windows
+move or minimize. The server suite passed 9 checks. The shared owner login is enabled on Railway.
+The reported cross-network call failure needs TURN; a Metered relay credential is configured in
+Railway's WEBRTC_ICE_SERVERS variable. The no-card relay trial has a 500 MB allowance. Relay
+credentials stay in hosting configuration, outside Git.

@@ -198,11 +198,13 @@ export function attachChatServer(server, { db, secret }) {
     const candidate = signal.type === 'candidate' && signal.candidate &&
       typeof signal.candidate === 'object' && typeof signal.candidate.candidate === 'string' &&
       signal.candidate.candidate.length <= 4_000;
-    if (!description && !candidate) return reject(socket, packet, 'VALIDATION', 'Invalid call signal.');
+    const media = signal.type === 'media' && typeof signal.muted === 'boolean' && typeof signal.cameraOff === 'boolean';
+    if (!description && !candidate && !media) return reject(socket, packet, 'VALIDATION', 'Invalid call signal.');
     const target = [...(byOrg.get(socket.chat.orgId) ?? [])].find((client) =>
       client.chat?.inCall && client.chat.peerId === packet.targetPeerId);
     if (!target) return reject(socket, packet, 'PEER_LEFT', 'That teammate has left the call.');
-    send(target, { type: 'rtc_signal', fromPeerId: socket.chat.peerId, signal });
+    send(target, { type: 'rtc_signal', fromPeerId: socket.chat.peerId,
+      signal: media ? { type: 'media', muted: signal.muted, cameraOff: signal.cameraOff } : signal });
   }
 
   wss.on('connection', (socket) => {
