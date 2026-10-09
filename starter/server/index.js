@@ -37,6 +37,7 @@ registerRoutes(router, {
 
 // Routes reachable without a token. Everything else requires a valid JWT.
 const PUBLIC_ROUTES = new Set([
+  'GET /v1/demo-login',
   'POST /v1/auth/login',
   'POST /v1/auth/refresh',
   'GET /v1/invites/:token',

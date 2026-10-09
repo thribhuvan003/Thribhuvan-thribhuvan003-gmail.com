@@ -33,6 +33,9 @@ export default defineConfig({
       PORT: String(PORT),
       NODE_ENV: 'production',
       JWT_SECRET: 'e2e-secret',
+      PUBLIC_OWNER_LOGIN: 'true',
+      OWNER_EMAIL: 'dana@example.test',
+      OWNER_PASSWORD: 'demo1234',
     },
   },
 });

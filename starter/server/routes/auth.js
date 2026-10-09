@@ -5,6 +5,22 @@ import { badRequest, notFound, send, unauthenticated } from '../http.js';
 import { resolve } from '../permissions.js';
 
 export function registerAuthRoutes(router, { db, secret }) {
+  const publicEmail = process.env.OWNER_EMAIL?.trim().toLowerCase();
+  const publicPassword = process.env.OWNER_PASSWORD;
+  const publicOwner = process.env.PUBLIC_OWNER_LOGIN === 'true' && publicEmail && publicPassword
+    ? db.prepare('SELECT id, password_hash FROM users WHERE email = ?').get(publicEmail) : null;
+  const publicLogin = publicOwner && verifyPassword(publicPassword, publicOwner.password_hash)
+    ? { email: publicEmail, password: publicPassword } : null;
+
+  router.get('/v1/demo-login', (_ctx, _params, res) => {
+    res.setHeader('cache-control', 'no-store');
+    const active = publicLogin && db.prepare(`SELECT o.id FROM memberships m
+      JOIN organizations o ON o.id = m.org_id
+      WHERE m.user_id = ? AND m.role = 'owner' AND m.status = 'active'
+        AND o.deleted_at IS NULL ORDER BY o.name LIMIT 1`).get(publicOwner.id);
+    send(res, 200, active ? { enabled: true, ...publicLogin, orgId: active.id } : { enabled: false });
+  });
+
   const memberships = (userId) => db.prepare(`
     SELECT o.id, o.name, o.theme, m.role, m.perm_version
     FROM memberships m JOIN organizations o ON o.id = m.org_id

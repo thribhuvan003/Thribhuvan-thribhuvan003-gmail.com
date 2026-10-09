@@ -45,19 +45,37 @@ function Action({ permissions, permission, testId, children, onClick }) {
 function Login({ onLogin, error, clearError }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  return <main className="entry-screen"><div className="entry-card">
-    <span className="entry-access-note">Invite-only workspace</span>
+  const [demo, setDemo] = useState(null);
+  const [loginOrgId, setLoginOrgId] = useState(null);
+  useEffect(() => {
+    let live = true;
+    api('/demo-login').then((data) => { if (live && data.enabled) setDemo(data); }).catch(() => {});
+    return () => { live = false; };
+  }, []);
+  return <main className="entry-screen">
+    {demo && <aside className="demo-login" data-testid="demo-login" aria-label="Demo owner login">
+      <strong>Try the owner account</strong>
+      <dl><dt>Email</dt><dd data-testid="demo-email">{demo.email}</dd>
+        <dt>Password</dt><dd data-testid="demo-password">{demo.password}</dd></dl>
+      <button type="button" data-testid="use-demo-login" onClick={() => {
+        setEmail(demo.email); setPassword(demo.password); setLoginOrgId(demo.orgId); clearError();
+      }}>Use owner login</button>
+      <p>Shared test workspace. Anyone using this login can manage it and invite people.
+        Invite each friend to use their own account for chat and calls. Keep demo content public.</p>
+    </aside>}
+    <div className="entry-card">
+    <span className="entry-access-note">{demo ? 'Shared demo workspace' : 'Invite-only workspace'}</span>
     <p className="eyebrow">Teamroom</p><h1>Sign in</h1>
     <p className="muted">Chat, call, and coordinate with your invited team.</p>
     <p className="entry-help">New here? Open the invitation link shared by your team owner to set up
       your account. Already joined? Use your own email and password below.</p>
     <form data-testid="login-form" noValidate onSubmit={(event) => {
-      event.preventDefault(); clearError(); onLogin(email, password);
+      event.preventDefault(); clearError(); onLogin(email, password, loginOrgId);
     }}>
       <label>Email<input data-testid="login-email" type="email" autoComplete="username"
-        value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+        value={email} onChange={(event) => { setEmail(event.target.value); setLoginOrgId(null); }} /></label>
       <label>Password<input data-testid="login-password" type="password" autoComplete="current-password"
-        value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+        value={password} onChange={(event) => { setPassword(event.target.value); setLoginOrgId(null); }} /></label>
       <button data-testid="login-submit" className="primary">Sign in</button>
     </form>
     {error && <p className="notice error" data-testid="login-error" data-error-code={error.code || 'NETWORK'}
@@ -136,8 +154,8 @@ export default function App() {
     setView('devices'); setMessage(null); setSession(data);
     window.history.replaceState(null, '', `/?org=${encodeURIComponent(data.orgId)}`);
   }
-  async function login(email, password) {
-    try { enter(await api('/auth/login', { method: 'POST', body: { email, password } })); }
+  async function login(email, password, orgId) {
+    try { enter(await api('/auth/login', { method: 'POST', body: { email, password, ...(orgId ? { orgId } : {}) } })); }
     catch (err) { setLoginError(err); }
   }
   async function authed(path, { method = 'GET', body } = {}) {

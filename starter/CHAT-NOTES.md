@@ -98,4 +98,12 @@ assessment branch.
 The sign-in page explains personal invitations. People now returns a full link with a copy button,
 the recipient and expiry. The browser check copies the actual link, opens it as another user,
 accepts it, signs in, sends a chat message, and confirms reuse is rejected. Owner credentials are
-not displayed publicly; each teammate uses their own account.
+not displayed publicly by default; each teammate uses their own account.
+
+For a shared test workspace, `PUBLIC_OWNER_LOGIN=true` shows the configured `OWNER_EMAIL` and
+`OWNER_PASSWORD` at the top of sign-in. The button fills the normal login form; it doesn't bypass
+authentication. The server checks that the password works and the account is an active owner
+before publishing it. Missing or incorrect values keep the panel hidden. This makes the owner's
+whole account public, including its workspaces, people, messages and admin actions. Use only test
+content. Friends should accept individual invitations to appear separately in chat and calls.
+Turn the flag off and change the account password before using that account privately again.
