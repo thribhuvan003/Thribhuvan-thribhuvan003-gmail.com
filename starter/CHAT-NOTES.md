@@ -88,5 +88,14 @@ login throttling and backup/restore operations remain deployment work before pub
 
 The Dockerfile builds the app and calls the live startup script. Its entrypoint prepares the
 mounted data directory, then runs Node as the node user. Railway mounts volumes as root, so the
-directory needs its ownership set at startup. A Railway deployment is being configured on the
-feature branch. These changes haven't been merged into the submitted assessment branch.
+directory needs its ownership set at startup. Teamroom is live at
+https://thribhuvan-chat.up.railway.app on the feature branch. HTTPS sign-in, invited-member chat,
+logout/login history and two-browser video with synthetic media passed against the hosted app.
+The saved chat message also survived a Railway container restart. Video across different networks
+still needs TURN configuration and testing. These changes haven't been merged into the submitted
+assessment branch.
+
+The sign-in page explains personal invitations. People now returns a full link with a copy button,
+the recipient and expiry. The browser check copies the actual link, opens it as another user,
+accepts it, signs in, sends a chat message, and confirms reuse is rejected. Owner credentials are
+not displayed publicly; each teammate uses their own account.

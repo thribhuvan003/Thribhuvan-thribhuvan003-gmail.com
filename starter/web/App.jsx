@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Chat from './Chat.jsx';
 import Grants from './Grants.jsx';
+import TeamInvite from './TeamInvite.jsx';
 
 async function api(path, { method = 'GET', token, body } = {}) {
   let response;
@@ -45,8 +46,11 @@ function Login({ onLogin, error, clearError }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   return <main className="entry-screen"><div className="entry-card">
+    <span className="entry-access-note">Invite-only workspace</span>
     <p className="eyebrow">Teamroom</p><h1>Sign in</h1>
     <p className="muted">Chat, call, and coordinate with your invited team.</p>
+    <p className="entry-help">New here? Open the invitation link shared by your team owner to set up
+      your account. Already joined? Use your own email and password below.</p>
     <form data-testid="login-form" noValidate onSubmit={(event) => {
       event.preventDefault(); clearError(); onLogin(email, password);
     }}>
@@ -77,6 +81,8 @@ function Invite({ token, done }) {
     <p className="eyebrow">Teamroom</p><h1>Invitation</h1>
     {invite && <>
       <p>You were invited to {invite.orgName} as <strong data-testid="invite-role">{invite.role}</strong>.</p>
+      <p className="entry-help">First time here? Enter your name and choose a password with at least
+        8 characters. If you already use Teamroom, use your existing password, then sign in.</p>
       <form onSubmit={async (event) => {
         event.preventDefault(); setError(null);
         try { await api(`/invites/${encodeURIComponent(token)}/accept`, {
@@ -111,6 +117,7 @@ export default function App() {
   const [members, setMembers] = useState([]);
   const [devices, setDevices] = useState([]);
   const [catalogue, setCatalogue] = useState([]);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const refreshRequest = useRef(null);
 
   useEffect(() => {
@@ -124,6 +131,7 @@ export default function App() {
   function enter(data) {
     setRows([]); setMembers([]); setDevices([]);
     setCatalogue([]);
+    setInviteOpen(false);
     setChatOpen(false); lastWorkspaceView.current = 'devices';
     setView('devices'); setMessage(null); setSession(data);
     window.history.replaceState(null, '', `/?org=${encodeURIComponent(data.orgId)}`);
@@ -320,10 +328,10 @@ export default function App() {
 
       {view === 'people' && <section className="panel"><div className="panel-head"><h2>People</h2>
         <Action permissions={permissions} permission="user:invite" testId="invite-user"
-          onClick={() => { const email = window.prompt('Email to invite'); if (!email) return;
-            const role = window.prompt('Role', 'viewer');
-            if (role) change(`${orgPath}/invites`, 'POST', { email, role },
-              (result) => setMessage(`Invite token: ${result.inviteToken}`)); }}>Invite</Action></div>
+          onClick={() => setInviteOpen((open) => !open)}>Invite</Action></div>
+        {allowed('user:invite') && <TeamInvite key={session.orgId} open={inviteOpen}
+          roles={session.roles || []} onClose={() => setInviteOpen(false)}
+          onCreate={(body) => change(`${orgPath}/invites`, 'POST', body)} />}
         <div className="table-wrap"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead>
           <tbody>{rows.map((person) => <tr key={person.id} data-testid="user-row" data-user-id={person.id}>
             <td>{person.name}</td><td>{person.email}</td><td>{person.role}</td><td>{person.status}</td>
