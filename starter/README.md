@@ -27,13 +27,48 @@ node scripts/check-permissions.js   # the resolution engine
 node scripts/check-jwt.js           # token verification
 node scripts/check-api.js           # the HTTP contract
 node scripts/check-personalisation.js # extra role and permission from this database
+npm run test:chat                    # real-time delivery, isolation and concurrent clients
+npm run test:chat:server             # isolated reliability, security and 100-client checks
 npx playwright test                 # the console contract
 ```
 
 The first four need only `better-sqlite3`. Playwright needs `npx playwright install chromium`
 once.
 
-The JWT, API and UI suites now pass with the implementation in this folder.
+The JWT, API, chat and UI suites now pass with the implementation in this folder.
+
+## Company chat
+
+GameArena is the player-facing use case: a game runs on a stronger computer and is used from
+another device. RhinoStream is the remote streaming and access layer behind that direction, with
+room to support shared gaming and creative workstations. Chat fits beside a session so invited
+teammates can coordinate playtests, 3D reviews and workstation handoffs without switching apps.
+This prototype manages that collaboration; it does not implement the video or input stream.
+
+Every active member can open the Chat view for the selected organization. Messages are stored in
+SQLite and delivered over an authenticated WebSocket. The access token is sent in the first socket
+message, not in the URL. The server checks the membership again while the connection is alive and
+disconnects a member immediately after a role, suspension or removal change.
+
+The first version has one shared room per organization, message history, online-member counts, a
+2,000-character message limit and a per-user rate limit. It does not include files, reactions,
+message editing or direct messages.
+
+Messages are acknowledged after saving. Retry uses the same client identifier, so it cannot create
+duplicates. Reconnecting recovers missed messages in database sequence order. The phone layout has
+a collapsible workspace menu. See [CHAT-NOTES.md](CHAT-NOTES.md) for the design and live setup.
+
+Active members can start or join the organisation's video call from Chat. Camera and microphone
+media uses browser WebRTC and travels directly between teammates; the authenticated socket only
+relays connection descriptions. Mute, camera off, leave, reconnect and a six-person room limit are
+included. Chat history remains after sign-out and sign-in; calls themselves are intentionally live
+and are not recorded.
+
+The current process and SQLite database are suitable for a small-company deployment on one server.
+Running multiple server instances requires a shared database plus a message broker for fan-out,
+presence and rate limits; otherwise users connected to different instances will not see each other.
+Redis can provide that coordination layer, but it does not carry video. Calls larger than a small
+team need an SFU such as LiveKit or mediasoup rather than browser-to-browser mesh.
 
 These suites are the floor, not the grade. They cover the happy path and the obvious failures;
 we grade on a separate set that goes after the awkward cases.
@@ -66,7 +101,7 @@ server/
   permissions.js     the resolution engine — the only place allow/deny is decided
   lifecycle.js       role ranks, last-owner, ending sessions
   audit.js           append-only audit writes
-  routes/            orgs, members, invites, devices, grants, sessions, audit
+  routes/            orgs, members, invites, devices, grants, sessions, chat, audit
 
 web/                 the React SPA
 ```
@@ -208,8 +243,8 @@ The four seeded grants each demonstrate a different rule; read the `_demonstrate
 
 ## Deliberately not here
 
-Rate limiting. Email delivery — invite tokens are returned in the API response instead. Password
-reset. Anything from Q2. Multi-region anything.
+API-wide rate limiting. Email delivery — invite tokens are returned in the API response instead.
+Password reset. Multi-region deployment.
 
 ---
 
