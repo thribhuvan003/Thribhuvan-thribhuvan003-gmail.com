@@ -2,6 +2,7 @@ import { audit, auditDenials } from '../audit.js';
 import { bumpPermVersion, newId, nowIso } from '../db.js';
 import { badRequest, forbidden, HttpError, normalizeTs, notFound, send } from '../http.js';
 import { assertCan, assertMayGrant } from '../permissions.js';
+import { permissionLabel } from '../permission-labels.js';
 
 export function registerGrantRoutes(router, { db }) {
   router.post('/v1/orgs/:org/grants', (ctx, _params, res) => {
@@ -64,7 +65,9 @@ export function registerGrantRoutes(router, { db }) {
   router.get('/v1/orgs/:org/grants', (ctx, _params, res) => {
     assertCan(db, ctx, 'user:read');
     const grants = db.prepare(`
-      SELECT * FROM grants WHERE org_id = ? ORDER BY created_at DESC, id DESC
+      SELECT g.*, u.name AS user_name, d.name AS device_name
+      FROM grants g JOIN users u ON u.id = g.user_id LEFT JOIN devices d ON d.id = g.device_id
+      WHERE g.org_id = ? ORDER BY g.created_at DESC, g.id DESC
     `).all(ctx.orgId);
     const parts = db.prepare(`
       SELECT gp.grant_id, gp.permission FROM grant_permissions gp
@@ -73,7 +76,9 @@ export function registerGrantRoutes(router, { db }) {
     `).all(ctx.orgId);
     const byGrant = new Map(grants.map((grant) => [grant.id, []]));
     for (const part of parts) byGrant.get(part.grant_id).push(part.permission);
-    send(res, 200, { grants: grants.map((grant) =>
+    const catalogue = db.prepare('SELECT key, resource, action, description FROM permissions ORDER BY resource, key')
+      .all().map(permissionLabel);
+    send(res, 200, { catalogue, grants: grants.map((grant) =>
       ({ ...grant, permissions: byGrant.get(grant.id) })) });
   });
 

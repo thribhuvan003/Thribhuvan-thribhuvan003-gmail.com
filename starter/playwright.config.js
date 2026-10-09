@@ -6,6 +6,7 @@ const PORT = 8124;
 // stand-in. `npm test` builds the SPA first, then boots it against a throwaway DB.
 export default defineConfig({
   testDir: 'tests',
+  testIgnore: '**/*.test.mjs',
   timeout: 30_000,
   fullyParallel: false,        // the tests mutate shared org state, so keep them ordered
   workers: 1,
@@ -16,7 +17,11 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
 
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [{ name: 'chromium', use: {
+    ...devices['Desktop Chrome'],
+    permissions: ['camera', 'microphone'],
+    launchOptions: { args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] },
+  } }],
 
   webServer: {
     command: 'node scripts/load-db.js && node server/index.js',

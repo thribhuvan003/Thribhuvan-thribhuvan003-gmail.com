@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
+import Chat from './Chat.jsx';
+import Grants from './Grants.jsx';
 
 async function api(path, { method = 'GET', token, body } = {}) {
   let response;
@@ -26,8 +28,9 @@ const has = (permissions, key) => permissions?.[key]?.effect === 'allow';
 const cards = [
   ['devices', 'Devices', 'device:list'],
   ['people', 'People', 'user:read'],
-  ['grants', 'Grants', 'user:read'],
+  ['grants', 'Access rules', 'user:read'],
   ['sessions', 'Sessions', 'session:view'],
+  ['chat', 'Chat', null],
   ['audit', 'Audit', 'audit:read'],
   ['admin', 'Admin', 'org:update'],
 ];
@@ -100,12 +103,14 @@ export default function App() {
   const [loginError, setLoginError] = useState(null);
   const [message, setMessage] = useState(null);
   const [view, setView] = useState('devices');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const lastWorkspaceView = useRef('devices');
   const [reload, setReload] = useState(0);
   const [rows, setRows] = useState([]);
   const [members, setMembers] = useState([]);
   const [devices, setDevices] = useState([]);
-  const [grantForm, setGrantForm] = useState(false);
-  const [grant, setGrant] = useState({ userId: '', deviceId: '', effect: 'allow', permissions: [] });
+  const [catalogue, setCatalogue] = useState([]);
   const refreshRequest = useRef(null);
 
   useEffect(() => {
@@ -118,6 +123,8 @@ export default function App() {
 
   function enter(data) {
     setRows([]); setMembers([]); setDevices([]);
+    setCatalogue([]);
+    setChatOpen(false); lastWorkspaceView.current = 'devices';
     setView('devices'); setMessage(null); setSession(data);
     window.history.replaceState(null, '', `/?org=${encodeURIComponent(data.orgId)}`);
   }
@@ -130,15 +137,25 @@ export default function App() {
       return await api(path, { method, body, token: session.token });
     } catch (err) {
       if (err.code !== 'TOKEN_STALE' && err.code !== 'UNAUTHENTICATED') throw err;
-      if (!refreshRequest.current) {
-        refreshRequest.current = api('/auth/refresh', {
-          method: 'POST', body: { orgId: session.orgId },
-        }).then((fresh) => { setSession(fresh); return fresh; })
-          .finally(() => { refreshRequest.current = null; });
-      }
-      const fresh = await refreshRequest.current;
+      const fresh = await refreshAccess();
       return api(path, { method, body, token: fresh.token });
     }
+  }
+  async function refreshAccess() {
+    const orgId = session.orgId;
+    const userId = session.user.id;
+    if (refreshRequest.current?.orgId !== orgId || refreshRequest.current?.userId !== userId) {
+      const request = { orgId, userId, promise: null };
+      request.promise = api('/auth/refresh', { method: 'POST', body: { orgId } })
+        .then((fresh) => {
+          setSession((current) => current?.orgId === orgId && current?.user.id === userId ? fresh : current);
+          return fresh;
+        }).finally(() => {
+          if (refreshRequest.current === request) refreshRequest.current = null;
+        });
+      refreshRequest.current = request;
+    }
+    return refreshRequest.current.promise;
   }
   async function switchOrg(orgId) {
     if (orgId === session.orgId) return;
@@ -165,7 +182,10 @@ export default function App() {
             read('grants'), read('members'),
             has(session.permissions, 'device:list') ? read('devices') : Promise.resolve({ devices: [] }),
           ]);
-          if (live) { setRows(grants.grants); setMembers(people.members); setDevices(available.devices); }
+          if (live) {
+            setRows(grants.grants); setCatalogue(grants.catalogue);
+            setMembers(people.members); setDevices(available.devices);
+          }
         } else if (view === 'sessions') {
           const [sessions, available] = await Promise.all([
             read('sessions'),
@@ -210,8 +230,12 @@ export default function App() {
 
   return <div className="shell" data-testid="app-shell" data-org-id={session.orgId}
     data-org-theme={org?.theme || 'cobalt'}>
-    <aside className="sidebar">
+    <aside className={`sidebar ${menuOpen ? 'menu-open' : ''}`}>
       <div className="brand"><span className="brand-mark">R</span><span>RemoteOps<small>RhinoStream</small></span></div>
+      <button type="button" className="workspace-toggle" aria-expanded={menuOpen}
+        aria-controls="workspace-navigation" onClick={() => setMenuOpen((open) => !open)}>
+        {menuOpen ? 'Close menu' : 'Workspace ▾'}</button>
+      <div className="workspace-body" id="workspace-navigation">
       <p className="section-label">Organizations</p>
       <div className="org-list">{session.orgs.map((item) => <button key={item.id}
         data-testid="org-option" data-org-id={item.id}
@@ -229,12 +253,15 @@ export default function App() {
       }}>+ Create organization</button>
       <p className="section-label">Workspace</p>
       <nav>{cards.map(([key, label, permission]) => {
-        const gate = key === 'admin' ? (allowed('org:update') ? 'org:update' :
+        const gate = key === 'chat' ? 'membership:active' : key === 'admin' ? (allowed('org:update') ? 'org:update' :
           allowed('org:delete') ? 'org:delete' : null) : allowed(permission) ? permission : null;
         if (!gate) return null;
         return <button key={key} data-testid={`nav-${key}`} data-permission={gate}
           data-state="unlocked" className={view === key ? 'nav-item selected' : 'nav-item'}
           onClick={() => { setRows([]); setMembers([]); setDevices([]);
+            setMenuOpen(false);
+            if (key === 'chat') setChatOpen(true);
+            else lastWorkspaceView.current = key;
             setView(key); setReload((value) => value + 1); setMessage(null); }}>
           {label}</button>;
       })}</nav>
@@ -247,11 +274,19 @@ export default function App() {
             window.history.replaceState(null, '', '/');
           } catch (err) { setMessage(err.message); }
         }}>Sign out</button></div>
+      </div>
     </aside>
     <main className="content">
       <header className="content-head"><div><p className="eyebrow">{org?.name}</p>
         <h1>{cards.find(([key]) => key === view)?.[1]}</h1></div>
-        <span className="org-badge">{session.role}</span></header>
+        <div className="workspace-tools">
+          <button type="button" className="workspace-chat-toggle" data-testid="toggle-chat"
+            aria-expanded={view === 'chat' || chatOpen} onClick={() => {
+              if (view === 'chat') { setChatOpen(true); setView(lastWorkspaceView.current); }
+              else setChatOpen((open) => !open);
+            }}>{view === 'chat' ? 'Dock chat ↘' : chatOpen ? 'Close chat' : 'Open chat'}</button>
+          <span className="org-badge">{session.role}</span>
+        </div></header>
       {message && <p className="notice" role="status">{message}</p>}
 
       {view === 'devices' && <section className="panel">
@@ -310,50 +345,11 @@ export default function App() {
             </>}</div></td></tr>)}</tbody></table></div>
       </section>}
 
-      {view === 'grants' && <section className="panel"><div className="panel-head"><h2>Grants</h2>
-        <Action permissions={permissions} permission="grant:create" testId="new-grant"
-          onClick={() => setGrantForm((value) => !value)}>New grant</Action></div>
-        {grantForm && <form className="grant-form" onSubmit={async (event) => {
-          event.preventDefault();
-          const result = await change(`${orgPath}/grants`, 'POST',
-            { ...grant, deviceId: grant.deviceId || null });
-          if (result) { setGrantForm(false);
-            setGrant({ userId: '', deviceId: '', effect: 'allow', permissions: [] }); }
-        }}>
-          <label>Member<select data-testid="grant-user" value={grant.userId} required
-            onChange={(event) => setGrant({ ...grant, userId: event.target.value })}>
-            <option value="">Choose member</option>
-            {members.filter((item) => item.status === 'active' && item.id !== session.user.id)
-              .map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-          </select></label>
-          <label>Device<select data-testid="grant-device" value={grant.deviceId}
-            onChange={(event) => setGrant({ ...grant, deviceId: event.target.value })}>
-            <option value="">All devices</option>
-            {devices.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-          </select></label>
-          <label>Effect<select data-testid="grant-effect" value={grant.effect}
-            onChange={(event) => setGrant({ ...grant, effect: event.target.value })}>
-            <option value="allow">Allow</option><option value="deny">Deny</option>
-          </select></label>
-          <fieldset><legend>Permissions</legend><div className="permission-grid">
-            {Object.keys(permissions).sort().map((key) => <label key={key} className="check-label">
-              <input type="checkbox" data-permission-key={key} checked={grant.permissions.includes(key)}
-                onChange={(event) => setGrant({ ...grant, permissions: event.target.checked ?
-                  [...grant.permissions, key] : grant.permissions.filter((item) => item !== key) })} />{key}
-            </label>)}
-          </div></fieldset>
-          <button data-testid="grant-submit" className="primary">Create grant</button>
-        </form>}
-        <div className="table-wrap"><table><thead><tr><th>Member</th><th>Effect</th><th>Scope</th><th>Permissions</th><th></th></tr></thead>
-          <tbody>{rows.map((item) => <tr key={item.id} data-testid="grant-row" data-effect={item.effect}>
-            <td>{members.find((member) => member.id === item.user_id)?.name || item.user_id}</td>
-            <td>{item.effect}</td>
-            <td>{devices.find((device) => device.id === item.device_id)?.name || 'Org-wide'}</td>
-            <td>{item.permissions.join(', ')}</td><td>
-              {!item.revoked_at && <Action permissions={permissions} permission="grant:revoke" testId="revoke-grant"
-                onClick={() => change(`${orgPath}/grants/${item.id}`, 'DELETE')}>Revoke</Action>}
-            </td></tr>)}</tbody></table></div>
-      </section>}
+      {view === 'grants' && <Grants rows={rows} catalogue={catalogue}
+        members={members.filter((member) => member.id !== session.user.id)} devices={devices}
+        canCreate={allowed('grant:create')} canRevoke={allowed('grant:revoke')}
+        onCreate={(body) => change(`${orgPath}/grants`, 'POST', body)}
+        onRemove={(id) => change(`${orgPath}/grants/${id}`, 'DELETE')} />}
 
       {view === 'sessions' && <section className="panel"><div className="panel-head"><h2>Sessions</h2>
         <Action permissions={permissions} permission="session:start" testId="new-session"
@@ -370,6 +366,21 @@ export default function App() {
                   onClick={() => change(`/sessions/${item.id}`, 'DELETE')}>Stop</button>}
             </td></tr>)}</tbody></table></div>
       </section>}
+
+      {(view === 'chat' || chatOpen) && <div className={view === 'chat' ? 'chat-host-full' : 'chat-host-docked'}
+        data-testid={view === 'chat' ? 'chat-full' : 'chat-dock'}>
+        <Chat key={session.orgId} session={session} authed={authed} compact={view !== 'chat'}
+        onClose={() => setChatOpen(false)} onExpand={() => setView('chat')}
+        onMembers={allowed('user:read') ? () => setView('people') : null}
+        onAuthExpired={async () => {
+          try { return await refreshAccess(); }
+          catch (err) {
+            if (['UNAUTHENTICATED', 'FORBIDDEN', 'NOT_FOUND'].includes(err.code)) {
+              setSession((current) => current?.orgId === session.orgId ? null : current);
+            }
+            throw err;
+          }
+        }} /></div>}
 
       {view === 'audit' && <section className="panel"><h2>Audit</h2>
         <div className="table-wrap"><table><thead><tr><th>When</th><th>Action</th><th>Result</th><th>Reason</th></tr></thead>

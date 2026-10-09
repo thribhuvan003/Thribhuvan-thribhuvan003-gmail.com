@@ -254,6 +254,7 @@ test('a grant created through the UI surfaces the item it grants', async ({ page
   await page.getByTestId('grant-user').selectOption('usr_acme_viewer');
   await page.getByTestId('grant-device').selectOption('dev_qa_android_01');
   await page.getByTestId('grant-effect').selectOption('allow');
+  await page.getByRole('button', { name: 'Choose individual actions' }).click();
   await page.locator('[data-permission-key="device:terminal"]').check();
   await page.getByTestId('grant-submit').click();
   await expect(page.locator('[data-testid="grant-row"]')).toHaveCount(4);

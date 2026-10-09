@@ -16,6 +16,7 @@ for (const suffix of ['', '-wal', '-shm']) {
 const db = openDatabase(DB_FILE);
 db.exec(readFileSync(here('../db/schema.sql'), 'utf8'));
 db.exec(readFileSync(here('../db/reference.sql'), 'utf8'));
+db.exec(readFileSync(here('../db/chat.sql'), 'utf8'));
 
 const seed = JSON.parse(readFileSync(here('../seed/orgs.json'), 'utf8'));
 
@@ -92,7 +93,8 @@ load();
 const overlay = buildOverlay(readNonce());
 if (overlay) applyOverlay(db, overlay, { passwordHash: hashPassword });
 
-const counts = ['organizations', 'users', 'memberships', 'devices', 'grants', 'sessions', 'audit_events']
+const counts = ['organizations', 'users', 'memberships', 'devices', 'grants', 'sessions',
+  'audit_events', 'chat_messages']
   .map((t) => `${t}=${db.prepare(`SELECT count(*) AS n FROM ${t}`).get().n}`)
   .join('  ');
 

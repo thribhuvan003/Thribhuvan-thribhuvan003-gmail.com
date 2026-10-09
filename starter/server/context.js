@@ -8,33 +8,36 @@ export function authenticate(db, secret) {
     const match = typeof authorization === 'string' && /^Bearer (\S+)$/i.exec(authorization);
     if (!match) throw unauthenticated();
 
-    const claims = verifyAccessToken(match[1], secret);
-    if (typeof claims.sub !== 'string' || !claims.sub ||
-        typeof claims.org !== 'string' || !claims.org) {
-      throw unauthenticated();
-    }
+    return contextFromToken(db, secret, match[1], params.org ?? params.orgId);
+  };
+}
 
-    const requestedOrg = params.org ?? params.orgId;
-    if (requestedOrg !== undefined && requestedOrg !== claims.org) throw notFound();
+export function contextFromToken(db, secret, token, requestedOrg) {
+  const claims = verifyAccessToken(token, secret);
+  if (typeof claims.sub !== 'string' || !claims.sub ||
+      typeof claims.org !== 'string' || !claims.org) {
+    throw unauthenticated();
+  }
 
-    const membership = db.prepare(`
-      SELECT m.* FROM memberships m
-      JOIN organizations o ON o.id = m.org_id
-      WHERE m.user_id = ? AND m.org_id = ? AND o.deleted_at IS NULL
-    `).get(claims.sub, claims.org);
+  if (requestedOrg !== undefined && requestedOrg !== claims.org) throw notFound();
 
-    if (!membership || membership.status === 'removed' || membership.status === 'invited') {
-      throw unauthenticated();
-    }
-    if (membership.status === 'suspended') throw forbidden('forbidden', 'suspended');
-    assertFresh(claims, membership);
+  const membership = db.prepare(`
+    SELECT m.* FROM memberships m
+    JOIN organizations o ON o.id = m.org_id
+    WHERE m.user_id = ? AND m.org_id = ? AND o.deleted_at IS NULL
+  `).get(claims.sub, claims.org);
 
-    return {
-      userId: membership.user_id,
-      orgId: membership.org_id,
-      role: membership.role,
-      membership,
-      claims,
-    };
+  if (!membership || membership.status === 'removed' || membership.status === 'invited') {
+    throw unauthenticated();
+  }
+  if (membership.status === 'suspended') throw forbidden('forbidden', 'suspended');
+  assertFresh(claims, membership);
+
+  return {
+    userId: membership.user_id,
+    orgId: membership.org_id,
+    role: membership.role,
+    membership,
+    claims,
   };
 }

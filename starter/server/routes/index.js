@@ -7,6 +7,7 @@ import { registerOrgWrites } from './org-writes.js';
 import { registerDeviceWrites } from './device-writes.js';
 import { registerGrantRoutes } from './grants.js';
 import { registerInviteRoutes } from './invites.js';
+import { registerChatRoutes } from './chat.js';
 
 export function registerRoutes(router, deps) {
   registerAuthRoutes(router, deps);
@@ -18,4 +19,5 @@ export function registerRoutes(router, deps) {
   registerDeviceWrites(router, deps);
   registerGrantRoutes(router, deps);
   registerInviteRoutes(router, deps);
+  registerChatRoutes(router, deps);
 }

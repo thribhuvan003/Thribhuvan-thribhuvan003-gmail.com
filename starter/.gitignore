@@ -9,3 +9,5 @@ e2e.db-shm
 dist/
 test-results/
 playwright-report/
+.env*
+data/

@@ -16,6 +16,8 @@ import { openDatabase } from './db.js';
 import { send, sendError, readJson, notFound } from './http.js';
 import { authenticate } from './context.js';
 import { registerRoutes } from './routes/index.js';
+import { attachChatServer } from './chat.js';
+import { ensureChatSchema } from './chat-store.js';
 
 const DEV = process.env.NODE_ENV !== 'production';
 const PORT = Number(process.env.PORT ?? 8080);
@@ -23,8 +25,15 @@ const SECRET = process.env.JWT_SECRET ?? 'dev-secret-change-me';
 const DIST = fileURLToPath(new URL('../dist/', import.meta.url));
 
 const db = openDatabase();
+ensureChatSchema(db);
 const router = createRouter();
-registerRoutes(router, { db, secret: SECRET });
+let chat;
+registerRoutes(router, {
+  db,
+  secret: SECRET,
+  disconnectChatMember: (orgId, userId) => chat?.disconnectMember(orgId, userId),
+  disconnectChatOrg: (orgId) => chat?.disconnectOrg(orgId),
+});
 
 // Routes reachable without a token. Everything else requires a valid JWT.
 const PUBLIC_ROUTES = new Set([
@@ -119,6 +128,7 @@ const server = http.createServer((req, res) => {
   if (vite) return vite.middlewares(req, res, () => send(res, 404, { error: { code: 'NOT_FOUND' } }));
   return serveStatic(req, res, url);
 });
+chat = attachChatServer(server, { db, secret: SECRET });
 
 server.listen(PORT, () => {
   console.log(`RemoteOps on http://localhost:${PORT}  (${DEV ? 'development' : 'production'})`);
@@ -126,6 +136,7 @@ server.listen(PORT, () => {
 
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.on(signal, () => {
+    chat.close();
     server.close(() => {
       db.close();
       process.exit(0);

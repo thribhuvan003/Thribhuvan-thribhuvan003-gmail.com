@@ -5,7 +5,7 @@ import { assertCanModify, assertNotLastOwner, assertRoleExists,
   endActiveSessions, roleRanks } from '../lifecycle.js';
 import { assertCan } from '../permissions.js';
 
-export function registerMemberRoutes(router, { db }) {
+export function registerMemberRoutes(router, { db, disconnectChatMember = () => {} }) {
   const member = (orgId, userId) => db.prepare(`
     SELECT * FROM memberships WHERE org_id = ? AND user_id = ?
       AND status IN ('active', 'suspended')
@@ -61,6 +61,7 @@ export function registerMemberRoutes(router, { db }) {
         }
         return member(ctx.orgId, params.userId);
       })();
+      if (target.role !== newRole) disconnectChatMember(ctx.orgId, params.userId);
       send(res, 200, updated);
     });
   });
@@ -85,6 +86,7 @@ export function registerMemberRoutes(router, { db }) {
         }
         return member(ctx.orgId, userId);
       })();
+      if (target.status !== status) disconnectChatMember(ctx.orgId, userId);
       send(res, 200, updated ?? { status: 'removed' });
     });
   }
@@ -106,6 +108,7 @@ export function registerMemberRoutes(router, { db }) {
       audit(db, { orgId: ctx.orgId, actorId: ctx.userId, action: 'member:leave',
         targetType: 'user', targetId: ctx.userId, result: 'allow', requestId: ctx.requestId });
     })();
+    disconnectChatMember(ctx.orgId, ctx.userId);
     send(res, 200, { status: 'removed' });
   });
   router.delete('/v1/orgs/:org/members/:userId', (ctx, params, res) =>

@@ -4,7 +4,7 @@ import { badRequest, send } from '../http.js';
 import { endActiveSessions } from '../lifecycle.js';
 import { assertCan } from '../permissions.js';
 
-export function registerOrgWrites(router, { db }) {
+export function registerOrgWrites(router, { db, disconnectChatOrg = () => {} }) {
   router.patch('/v1/orgs/:org', (ctx, _params, res) => {
     const meta = { action: 'org:update', targetType: 'org', targetId: ctx.orgId };
     return auditDenials(db, ctx, meta, () => {
@@ -42,6 +42,7 @@ export function registerOrgWrites(router, { db }) {
         audit(db, { orgId: ctx.orgId, actorId: ctx.userId, action: 'org:delete',
           targetType: 'org', targetId: ctx.orgId, result: 'allow', requestId: ctx.requestId });
       })();
+      disconnectChatOrg(ctx.orgId);
       send(res, 200, { id: ctx.orgId, status: 'deleted' });
     });
   });

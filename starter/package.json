@@ -8,15 +8,19 @@
     "dev": "node --watch-path=./server --watch server/index.js",
     "build": "vite build",
     "start": "node scripts/start.js",
+    "start:live": "node scripts/start-live.js",
     "db:reset": "node scripts/load-db.js",
     "db:load": "node scripts/load-db.js",
     "test": "playwright test",
     "test:ui": "playwright test --ui",
+    "test:chat": "node scripts/check-chat.js",
+    "test:chat:server": "node --test tests/chat-server.test.mjs tests/chat-live.test.mjs",
     "personalisation": "node scripts/check-personalisation.js",
     "fingerprint": "node scripts/personalise.js"
   },
   "dependencies": {
-    "better-sqlite3": "^11.10.0"
+    "better-sqlite3": "^11.10.0",
+    "ws": "^8.22.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",
