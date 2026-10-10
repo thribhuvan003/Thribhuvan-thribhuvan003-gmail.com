@@ -227,6 +227,14 @@ test('video signalling stays inside the organization and limits browser-to-brows
   room[0].packet({ type: 'rtc_signal', targetPeerId: ready[1].peerId,
     signal: { type: 'media', muted: true, cameraOff: false, extra: 'discarded' } });
   assert.deepEqual((await media).signal, { type: 'media', muted: true, cameraOff: false });
+  const presenting = room[1].wait((packet) => packet.type === 'rtc_signal' && packet.signal.sharing === true);
+  room[0].packet({ type: 'rtc_signal', targetPeerId: ready[1].peerId,
+    signal: { type: 'media', muted: false, cameraOff: false, sharing: true, extra: 'discarded' } });
+  assert.deepEqual((await presenting).signal, { type: 'media', muted: false, cameraOff: false, sharing: true });
+  const malformedShare = room[0].wait((packet) => packet.type === 'error' && packet.code === 'VALIDATION');
+  room[0].packet({ type: 'rtc_signal', targetPeerId: ready[1].peerId,
+    signal: { type: 'media', muted: false, cameraOff: false, sharing: 'yes' } });
+  await malformedShare;
   const malformedMedia = room[0].wait((packet) => packet.type === 'error' && packet.code === 'VALIDATION');
   room[0].packet({ type: 'rtc_signal', targetPeerId: ready[1].peerId,
     signal: { type: 'media', muted: 'yes', cameraOff: false } });

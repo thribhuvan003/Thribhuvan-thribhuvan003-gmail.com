@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useChat } from './useChat.js';
 import { useVideoCall } from './useVideoCall.js';
 import VideoCall from './VideoCall.jsx';
+import CallJoinDialog from './CallJoinDialog.jsx';
 import { participantColor } from './participantColor.js';
 import FloatingWindow from './FloatingWindow.jsx';
 import Icon from './Icons.jsx';
@@ -34,6 +35,8 @@ export default function Chat({ session, authed, onAuthExpired, onMembers, compac
   const chat = useChat({ session, authed, onAuthExpired,
     onIncoming: () => { if (!readableRef.current) setUnread((count) => count + 1); } });
   const call = useVideoCall({ chat });
+  const [joinOpen, setJoinOpen] = useState(false);
+  const callButton = useRef(null);
   const [text, setText] = useState('');
   const historyRef = useRef(null);
   const nearBottom = useRef(true);
@@ -89,16 +92,17 @@ export default function Chat({ session, authed, onAuthExpired, onMembers, compac
             'Catching up…' : chat.status === 'offline' ? 'Offline' : 'Connecting…'}
         </span>
         <button type="button" className={`call-toggle ${call.joined ? 'live' : ''}`}
+          ref={callButton}
           data-testid="call-toggle" disabled={call.joining || (!call.joined && !connected)}
-          onClick={call.joined ? call.leave : async () => { if (await call.join()) onFloat?.(); }}>
+          onClick={call.joined ? call.leave : () => setJoinOpen(true)}>
           <Icon name="video" size={16} />
-          {call.joined ? 'Leave video' : call.joining ? 'Starting…' : call.participants.length ?
-            `Join video · ${call.participants.length}` : 'Start video'}</button>
+          {call.joined ? 'Leave call' : call.joining ? 'Starting…' : call.participants.length ?
+            `Join call · ${call.participants.length}` : 'Start call'}</button>
         {!compact && <button type="button" className="chat-float-button" aria-label="Float team chat"
           title="Move chat into a floating window" onClick={onFloat}><Icon name="float" /></button>}
       </header>
 
-      {call.error && !call.joined && <p className="call-error" role="alert">{call.error}</p>}
+      {call.error && !call.joined && !joinOpen && <p className="call-error" role="alert">{call.error}</p>}
 
       <div className="chat-history" data-testid="chat-history" ref={historyRef}
         role="log" aria-label="Team messages" aria-live="polite" aria-relevant="additions"
@@ -198,6 +202,9 @@ export default function Chat({ session, authed, onAuthExpired, onMembers, compac
     </aside>
     </section>
     </FloatingWindow>
+    {joinOpen && <CallJoinDialog call={call} connected={connected} orgName={org?.name} returnFocusRef={callButton}
+      onCancel={() => { call.cancelJoin(); setJoinOpen(false); }}
+      onJoined={() => { setJoinOpen(false); onFloat?.(); }} />}
     {call.joined && createPortal(<VideoCall call={call} peerId={chat.peerId} user={session.user}
       orgName={org?.name} />, document.body)}
   </>;

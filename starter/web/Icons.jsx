@@ -3,6 +3,7 @@ import React from 'react';
 export default function Icon({ name, size = 18 }) {
   const paths = {
     video: <><rect x="3" y="6" width="12" height="12" rx="3" /><path d="m15 10 6-3v10l-6-3" /></>,
+    screen: <><rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4M8 10l4-4 4 4M12 6v7" /></>,
     cameraOff: <><path d="m3 3 18 18M10 6h2a3 3 0 0 1 3 3v3M15 10l6-3v10l-3-1.5M6 6a3 3 0 0 0-3 3v6a3 3 0 0 0 3 3h6a3 3 0 0 0 2.1-.9" /></>,
     mic: <><rect x="9" y="3" width="6" height="12" rx="3" /><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8" /></>,
     micOff: <><path d="m3 3 18 18M9 9v3a3 3 0 0 0 5.1 2.1M9 5a3 3 0 0 1 6 0v6M5 10v2a7 7 0 0 0 12 4.9M19 10v2M12 19v3M8 22h8" /></>,

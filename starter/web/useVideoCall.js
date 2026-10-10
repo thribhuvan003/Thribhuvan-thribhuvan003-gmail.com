@@ -10,12 +10,19 @@ export function useVideoCall({ chat }) {
   const [error, setError] = useState(null);
   const [muted, setMuted] = useState(false);
   const [cameraOff, setCameraOff] = useState(false);
+  const [screenStream, setScreenStream] = useState(null);
+  const [sharePending, setSharePending] = useState(false);
   const joinedRef = useRef(false);
   const joinRequest = useRef(0);
   const joiningRef = useRef(false);
   const joinedPeer = useRef(null);
   const localRef = useRef(null);
+  const screenRef = useRef(null);
+  const shareRequest = useRef(0);
+  const sharingRef = useRef(false);
+  const videoSenders = useRef(new Map());
   const peers = useRef(new Map());
+  const remoteRefs = useRef(new Map());
   const candidates = useRef(new Map());
   const offered = useRef(new Set());
   const transport = useRef(chat);
@@ -24,6 +31,8 @@ export function useVideoCall({ chat }) {
   const dropPeer = useCallback((peerId) => {
     peers.current.get(peerId)?.close();
     peers.current.delete(peerId);
+    videoSenders.current.delete(peerId);
+    remoteRefs.current.delete(peerId);
     candidates.current.delete(peerId);
     offered.current.delete(peerId);
     setConnections((current) => { const next = new Map(current); next.delete(peerId); return next; });
@@ -43,26 +52,40 @@ export function useVideoCall({ chat }) {
 
   function mediaState() {
     return { type: 'media', muted: !localRef.current?.getAudioTracks().some((track) => track.enabled && track.readyState === 'live'),
-      cameraOff: !localRef.current?.getVideoTracks().some((track) => track.enabled && track.readyState === 'live') };
+      cameraOff: !screenRef.current && !localRef.current?.getVideoTracks().some((track) => track.enabled && track.readyState === 'live'),
+      sharing: !!screenRef.current };
+  }
+
+  function broadcastMedia() {
+    for (const peerId of peers.current.keys()) transport.current.sendPacket({
+      type: 'rtc_signal', targetPeerId: peerId, signal: mediaState(),
+    });
   }
 
   const ensurePeer = useCallback((peerId) => {
     if (peers.current.has(peerId)) return peers.current.get(peerId);
     const peer = new RTCPeerConnection({ iceServers: transport.current.iceServers });
-    for (const track of localRef.current?.getTracks() ?? []) peer.addTrack(track, localRef.current);
+    for (const track of localRef.current?.getAudioTracks() ?? []) peer.addTrack(track, localRef.current);
+    const videoTrack = screenRef.current?.getVideoTracks()[0] ?? localRef.current?.getVideoTracks()[0];
+    // Reserve both directions so audio-only members can receive video and later present.
+    videoSenders.current.set(peerId, videoTrack ? peer.addTrack(videoTrack, localRef.current) :
+      peer.addTransceiver('video', { direction: 'sendrecv', streams: [localRef.current] }).sender);
     peer.onicecandidate = (event) => {
       if (event.candidate) transport.current.sendPacket({ type: 'rtc_signal', targetPeerId: peerId,
         signal: { type: 'candidate', candidate: event.candidate.toJSON() } });
     };
     peer.ontrack = (event) => {
       if (peers.current.get(peerId) !== peer) return;
-      const stream = event.streams[0] ?? new MediaStream([event.track]);
+      // Aggregate tracks even when a reserved video sender has no stream ID yet.
+      const stream = remoteRefs.current.get(peerId) ?? new MediaStream();
+      if (!stream.getTracks().some(track => track.id === event.track.id)) stream.addTrack(event.track);
+      remoteRefs.current.set(peerId, stream);
       setRemoteStreams((current) => new Map(current).set(peerId, stream));
     };
     peer.onconnectionstatechange = () => {
       if (peers.current.get(peerId) !== peer) return;
       setConnections((current) => new Map(current).set(peerId, peer.connectionState));
-      if (peer.connectionState === 'failed') setError('The media connection failed. Leave and rejoin; if it happens again, the call relay needs checking.');
+      if (peer.connectionState === 'failed') setError('The call could not reconnect. Leave and join again.');
     };
     peers.current.set(peerId, peer);
     transport.current.sendPacket({ type: 'rtc_signal', targetPeerId: peerId, signal: mediaState() });
@@ -93,6 +116,12 @@ export function useVideoCall({ chat }) {
     joinedPeer.current = null;
     setJoined(false);
     dropAllPeers();
+    shareRequest.current++;
+    sharingRef.current = false;
+    setSharePending(false);
+    for (const track of screenRef.current?.getTracks() ?? []) track.stop();
+    screenRef.current = null;
+    setScreenStream(null);
     for (const track of localRef.current?.getTracks() ?? []) track.stop();
     localRef.current = null;
     setLocalStream(null);
@@ -117,6 +146,18 @@ export function useVideoCall({ chat }) {
       const peer = ensurePeer(peerId);
       if (packet.signal.type === 'offer') {
         await peer.setRemoteDescription(packet.signal);
+        // A null-track reservation may not be associated with an incoming offer.
+        // Use the video transceiver that actually received a negotiated MID.
+        const video = peer.getTransceivers().find(item => item.receiver.track.kind === 'video' && item.mid !== null);
+        if (video) {
+          const reserved = peer.getTransceivers().find(item => item.sender === videoSenders.current.get(peerId));
+          if (reserved !== video && reserved?.mid === null) reserved.stop();
+          video.direction = 'sendrecv';
+          video.sender.setStreams(localRef.current);
+          await video.sender.replaceTrack(screenRef.current?.getVideoTracks()[0] ??
+            localRef.current?.getVideoTracks().find(track => track.readyState === 'live') ?? null);
+          videoSenders.current.set(peerId, video.sender);
+        }
         await peer.setLocalDescription(await peer.createAnswer());
         transport.current.sendPacket({ type: 'rtc_signal', targetPeerId: peerId,
           signal: peer.localDescription.toJSON() });
@@ -155,7 +196,15 @@ export function useVideoCall({ chat }) {
     }
   }, [joined, chat.status, chat.peerId, chat.callParticipants, dropPeer, ensurePeer, offerTo]);
 
-  async function join() {
+  const cancelJoin = useCallback(() => {
+    if (!joiningRef.current) return;
+    joinRequest.current++;
+    joiningRef.current = false;
+    setJoining(false);
+    setError(null);
+  }, []);
+
+  async function join({ video = true, startMuted = false } = {}) {
     if (joiningRef.current || joinedRef.current || chat.status !== 'connected') return;
     const request = ++joinRequest.current;
     joiningRef.current = true;
@@ -163,12 +212,12 @@ export function useVideoCall({ chat }) {
     setError(null);
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
-        setError('Your browser cannot access a camera here. Open the secure HTTPS link in a supported browser.');
+        setError('Your browser cannot access media here. Open the secure HTTPS link in a supported browser.');
         return false;
       }
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true },
-        video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 24, max: 30 } },
+        video: video ? { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 24, max: 30 } } : false,
       });
       if (request !== joinRequest.current) {
         for (const track of stream.getTracks()) track.stop();
@@ -188,18 +237,22 @@ export function useVideoCall({ chat }) {
           type: 'rtc_signal', targetPeerId: peerId, signal: mediaState(),
         });
       });
+      // Apply the user's choice before a peer can attach or transmit this track.
+      for (const track of stream.getAudioTracks()) track.enabled = !startMuted;
       localRef.current = stream;
       joinedRef.current = true;
       setLocalStream(stream);
       setJoined(true);
-      setMuted(false);
-      setCameraOff(false);
+      setMuted(startMuted);
+      setCameraOff(!video);
       return true;
     } catch (err) {
       if (request !== joinRequest.current) return;
       setError(err.name === 'NotAllowedError' ?
-        'Camera and microphone permission is required to join.' :
-        'Camera or microphone is unavailable on this device.');
+        `${video ? 'Camera and microphone' : 'Microphone'} permission is required to join. Allow access in your browser settings, then try again.` :
+        err.name === 'NotReadableError' ? 'A device is busy. Close other apps using it, then try again.' :
+        video ? 'Camera or microphone is unavailable. Try Audio only if you do not have a working camera.' :
+        'Microphone is unavailable. Connect one, then try again.');
     } finally {
       if (request === joinRequest.current) { joiningRef.current = false; setJoining(false); }
     }
@@ -207,6 +260,77 @@ export function useVideoCall({ chat }) {
   }
 
   useEffect(() => () => leave(), [leave]);
+
+  async function stopSharing() {
+    const stream = screenRef.current;
+    if (!stream) return;
+    const request = ++shareRequest.current;
+    screenRef.current = null;
+    setScreenStream(null);
+    // Stop capture immediately, before waiting on any sender operation.
+    for (const track of stream.getTracks()) track.stop();
+    setSharePending(true);
+    const camera = localRef.current?.getVideoTracks().find(track => track.readyState === 'live') ?? null;
+    const senders = [...videoSenders.current.entries()];
+    const results = await Promise.allSettled(senders.map(([, sender]) => sender.replaceTrack(camera)));
+    if (request !== shareRequest.current || !joinedRef.current) return;
+    sharingRef.current = false;
+    setSharePending(false);
+    broadcastMedia();
+    if (results.some((result, index) => result.status === 'rejected' &&
+      videoSenders.current.get(senders[index][0]) === senders[index][1])) {
+      setError('Screen sharing stopped, but your camera could not be restored. Leave and join again.');
+    }
+  }
+
+  async function startSharing() {
+    if (!joinedRef.current || sharingRef.current || transport.current.status !== 'connected') return;
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      setError('Screen sharing is unavailable in this browser. Try a supported desktop browser.');
+      return;
+    }
+    const request = ++shareRequest.current;
+    const sessionRequest = joinRequest.current;
+    sharingRef.current = true;
+    setSharePending(true);
+    setError(null);
+    let stream;
+    try {
+      // Called directly from the user's click; every share uses the browser's chooser.
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 15, max: 30 } },
+        audio: false, selfBrowserSurface: 'exclude', surfaceSwitching: 'include',
+      });
+      if (request !== shareRequest.current || !joinedRef.current) {
+        for (const track of stream.getTracks()) track.stop();
+        return;
+      }
+      const track = stream.getVideoTracks()[0];
+      if (!track || track.readyState !== 'live') throw new Error('No live display track');
+      track.contentHint = 'detail';
+      screenRef.current = stream;
+      track.addEventListener('ended', () => { if (screenRef.current === stream) void stopSharing(); }, { once: true });
+      const senders = [...videoSenders.current.entries()];
+      const results = await Promise.allSettled(senders.map(([, sender]) => sender.replaceTrack(track)));
+      if (request !== shareRequest.current || !joinedRef.current) return;
+      if (results.some((result, index) => result.status === 'rejected' &&
+        videoSenders.current.get(senders[index][0]) === senders[index][1])) throw new Error('Display sender replacement failed');
+      setScreenStream(stream);
+      broadcastMedia();
+    } catch (err) {
+      if (request !== shareRequest.current || !joinedRef.current) return;
+      if (screenRef.current === stream && stream) await stopSharing();
+      else for (const track of stream?.getTracks() ?? []) track.stop();
+      if (joinedRef.current && sessionRequest === joinRequest.current && err.name !== 'NotAllowedError') {
+        setError('Screen sharing could not start. Try another window or tab.');
+      }
+    } finally {
+      if (request === shareRequest.current) {
+        sharingRef.current = !!screenRef.current;
+        setSharePending(false);
+      }
+    }
+  }
 
   function toggleMute() {
     if (!localRef.current?.getAudioTracks().some((track) => track.readyState === 'live')) return;
@@ -230,6 +354,9 @@ export function useVideoCall({ chat }) {
   const relayAvailable = chat.iceServers.some((server) =>
     (Array.isArray(server.urls) ? server.urls : [server.urls]).some((url) => /^turns?:/i.test(url)));
   return { joined, joining, localStream, remoteStreams, remoteMedia, connections, relayAvailable,
+    screenStream, sharePending, startSharing, stopSharing,
+    shareSupported: !!navigator.mediaDevices?.getDisplayMedia,
     participants: chat.callParticipants, transportStatus: chat.status, error,
-    muted, cameraOff, join, leave, toggleMute, toggleCamera };
+    muted, cameraOff, audioOnly: joined && !localStream?.getVideoTracks().length,
+    join, cancelJoin, leave, toggleMute, toggleCamera };
 }
