@@ -1,0 +1,38 @@
+name: Collaboration checks
+on:
+  push:
+    branches: [feat/org-chat]
+    paths: ['starter/**', '.github/workflows/collaboration.yml']
+  pull_request:
+    paths: ['starter/**', '.github/workflows/collaboration.yml']
+permissions:
+  contents: read
+concurrency:
+  group: collaboration-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: starter
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: starter/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/check-jwt.js && node scripts/check-permissions.js && node scripts/check-personalisation.js
+      - run: node scripts/check-api.js
+      - run: npm run test:chat:server
+      - run: npm test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-failures
+          path: starter/test-results/
+          retention-days: 7

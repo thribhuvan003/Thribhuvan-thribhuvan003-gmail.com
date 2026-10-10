@@ -42,8 +42,8 @@ export function useVideoCall({ chat }) {
   }, [dropPeer]);
 
   function mediaState() {
-    return { type: 'media', muted: !localRef.current?.getAudioTracks().some((track) => track.enabled),
-      cameraOff: !localRef.current?.getVideoTracks().some((track) => track.enabled) };
+    return { type: 'media', muted: !localRef.current?.getAudioTracks().some((track) => track.enabled && track.readyState === 'live'),
+      cameraOff: !localRef.current?.getVideoTracks().some((track) => track.enabled && track.readyState === 'live') };
   }
 
   const ensurePeer = useCallback((peerId) => {
@@ -55,6 +55,7 @@ export function useVideoCall({ chat }) {
         signal: { type: 'candidate', candidate: event.candidate.toJSON() } });
     };
     peer.ontrack = (event) => {
+      if (peers.current.get(peerId) !== peer) return;
       const stream = event.streams[0] ?? new MediaStream([event.track]);
       setRemoteStreams((current) => new Map(current).set(peerId, stream));
     };
@@ -79,7 +80,7 @@ export function useVideoCall({ chat }) {
         signal: peer.localDescription.toJSON() });
     } catch {
       offered.current.delete(peerId);
-      setError('The call could not connect. Try leaving and joining again.');
+      if (joinedRef.current) setError('The call could not connect. Try leaving and joining again.');
     }
   }, [ensurePeer]);
 
@@ -97,12 +98,13 @@ export function useVideoCall({ chat }) {
     setLocalStream(null);
     setMuted(false);
     setCameraOff(false);
+    setError(null);
   }, [dropAllPeers]);
 
   useEffect(() => chat.onCallPacket(async (packet) => {
     if (packet.type === 'error') {
       setError(packet.message);
-      if (['CALL_FULL', 'CALL_ALREADY_JOINED'].includes(packet.code)) leave();
+      if (['CALL_FULL', 'CALL_ALREADY_JOINED'].includes(packet.code)) { leave(); setError(packet.message); }
       return;
     }
     if (!joinedRef.current || packet.type !== 'rtc_signal') return;
@@ -128,7 +130,7 @@ export function useVideoCall({ chat }) {
         for (const candidate of candidates.current.get(peerId)) await peer.addIceCandidate(candidate);
         candidates.current.delete(peerId);
       }
-    } catch { setError('A call connection update failed. Try rejoining.'); }
+    } catch { if (joinedRef.current) setError('A call connection update failed. Try rejoining.'); }
   }), [chat.onCallPacket, ensurePeer, leave]);
 
   useEffect(() => {
@@ -160,6 +162,10 @@ export function useVideoCall({ chat }) {
     setJoining(true);
     setError(null);
     try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setError('Your browser cannot access a camera here. Open the secure HTTPS link in a supported browser.');
+        return false;
+      }
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true },
         video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 24, max: 30 } },
@@ -168,6 +174,20 @@ export function useVideoCall({ chat }) {
         for (const track of stream.getTracks()) track.stop();
         return;
       }
+      if (transport.current.status !== 'connected') {
+        for (const track of stream.getTracks()) track.stop();
+        setError('The connection changed while starting the call. Wait for chat to reconnect, then try again.');
+        return false;
+      }
+      for (const track of stream.getTracks()) track.addEventListener('ended', () => {
+        if (localRef.current !== stream) return;
+        if (track.kind === 'video') setCameraOff(true);
+        if (track.kind === 'audio') setMuted(true);
+        setError('A camera or microphone disconnected. Leave and rejoin after reconnecting your device.');
+        for (const peerId of peers.current.keys()) transport.current.sendPacket({
+          type: 'rtc_signal', targetPeerId: peerId, signal: mediaState(),
+        });
+      });
       localRef.current = stream;
       joinedRef.current = true;
       setLocalStream(stream);
@@ -189,6 +209,7 @@ export function useVideoCall({ chat }) {
   useEffect(() => () => leave(), [leave]);
 
   function toggleMute() {
+    if (!localRef.current?.getAudioTracks().some((track) => track.readyState === 'live')) return;
     const next = !muted;
     for (const track of localRef.current?.getAudioTracks() ?? []) track.enabled = !next;
     setMuted(next);
@@ -197,6 +218,7 @@ export function useVideoCall({ chat }) {
     });
   }
   function toggleCamera() {
+    if (!localRef.current?.getVideoTracks().some((track) => track.readyState === 'live')) return;
     const next = !cameraOff;
     for (const track of localRef.current?.getVideoTracks() ?? []) track.enabled = !next;
     setCameraOff(next);
@@ -208,6 +230,6 @@ export function useVideoCall({ chat }) {
   const relayAvailable = chat.iceServers.some((server) =>
     (Array.isArray(server.urls) ? server.urls : [server.urls]).some((url) => /^turns?:/i.test(url)));
   return { joined, joining, localStream, remoteStreams, remoteMedia, connections, relayAvailable,
-    participants: chat.callParticipants, error,
+    participants: chat.callParticipants, transportStatus: chat.status, error,
     muted, cameraOff, join, leave, toggleMute, toggleCamera };
 }

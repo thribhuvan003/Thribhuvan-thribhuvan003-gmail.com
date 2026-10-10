@@ -37,6 +37,7 @@ export default function Chat({ session, authed, onAuthExpired, onMembers, compac
   const [text, setText] = useState('');
   const historyRef = useRef(null);
   const nearBottom = useRef(true);
+  const [awayFromBottom, setAwayFromBottom] = useState(false);
   const olderPosition = useRef(null);
   const org = session.orgs.find((item) => item.id === session.orgId);
   const connected = chat.status === 'connected';
@@ -104,6 +105,7 @@ export default function Chat({ session, authed, onAuthExpired, onMembers, compac
         onScroll={() => {
           const area = historyRef.current;
           nearBottom.current = area.scrollHeight - area.scrollTop - area.clientHeight < 80;
+          setAwayFromBottom(!nearBottom.current);
         }}>
         {chat.cursor && <button type="button" className="load-older" disabled={chat.loadingOlder}
           onClick={older}>{chat.loadingOlder ? 'Loading…' : 'Load earlier messages'}</button>}
@@ -152,10 +154,17 @@ export default function Chat({ session, authed, onAuthExpired, onMembers, compac
         </article>)}
       </div>
 
+      {awayFromBottom && <button type="button" className="chat-jump" data-testid="chat-jump"
+        onClick={() => {
+          nearBottom.current = true;
+          historyRef.current.scrollTop = historyRef.current.scrollHeight;
+          setAwayFromBottom(false);
+        }}>↓ Latest messages</button>}
+
       {chat.error && <p className="chat-error" role="alert">{chat.error}</p>}
       <form className="chat-composer" onSubmit={send}>
         <label htmlFor="chat-message" className="sr-only">Message your team</label>
-        <textarea id="chat-message" data-testid="chat-input" rows="2" maxLength={2000}
+        <textarea id="chat-message" data-testid="chat-input" rows="2" maxLength={2000} enterKeyHint="send"
           value={text} placeholder="Message your team…"
           onChange={(event) => setText(event.target.value)}
           onKeyDown={(event) => {

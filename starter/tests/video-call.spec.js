@@ -81,6 +81,27 @@ test('two teammates keep media and drafts while moving windows and reconnect aft
     await expect.poll(() => inboundAudioPackets(owner)).toBeGreaterThan(0);
     await expect.poll(() => inboundAudioPackets(teammate)).toBeGreaterThan(0);
 
+    const packetsBeforeMaximize = await inboundAudioPackets(owner);
+    await owner.getByRole('button', { name: 'Maximize video call', exact: true }).click();
+    await expect(owner.getByTestId('video-window')).toHaveClass(/is-maximized/);
+    await expect.poll(() => inboundAudioPackets(owner)).toBeGreaterThan(packetsBeforeMaximize);
+    await expect(owner.getByTestId('call-mute')).toBeInViewport();
+    await owner.getByRole('button', { name: 'Restore size of video call', exact: true }).click();
+    const resize = owner.getByRole('button', { name: 'Resize video call window', exact: true });
+    await resize.focus();
+    await resize.press('Shift+ArrowLeft');
+    await resize.press('Shift+ArrowUp');
+    await expect.poll(() => owner.getByTestId('remote-video').evaluate((video) => video.readyState)).toBeGreaterThanOrEqual(2);
+    await expect.poll(async () => {
+      const grid = await owner.locator('.video-grid').boundingBox();
+      const names = await owner.locator('.video-person').all();
+      for (const name of names) {
+        const box = await name.boundingBox();
+        if (box.y < grid.y || box.y + box.height > grid.y + grid.height + 1) return false;
+      }
+      return true;
+    }).toBe(true);
+
     const videoWindow = owner.getByTestId('video-window');
     const handle = await owner.getByRole('button', { name: 'Move video call window', exact: true }).boundingBox();
     const before = await videoWindow.boundingBox();
@@ -150,4 +171,37 @@ test('two teammates keep media and drafts while moving windows and reconnect aft
   } finally {
     await Promise.all([ownerContext.close(), teammateContext.close()]);
   }
+});
+
+test('permission denial recovers and disconnected media cannot be toggled back on', async ({ page }) => {
+  await page.addInitScript(() => {
+    const native = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    let first = true;
+    navigator.mediaDevices.getUserMedia = async (...args) => {
+      if (first) { first = false; throw new DOMException('Denied for this test', 'NotAllowedError'); }
+      const stream = await native(...args);
+      window.__localTestStream = stream;
+      return stream;
+    };
+  });
+  await login(page, 'dana@example.test');
+  await page.getByTestId('call-toggle').click();
+  await expect(page.getByRole('alert')).toContainText('permission is required');
+  await expect(page.getByTestId('video-window')).toHaveCount(0);
+  await expect(page.getByTestId('call-toggle')).toBeEnabled();
+  await page.getByTestId('call-toggle').click();
+  await expect(page.getByTestId('video-window')).toBeVisible();
+  await page.evaluate(() => {
+    const track = window.__localTestStream.getVideoTracks()[0];
+    track.stop();
+    track.dispatchEvent(new Event('ended'));
+  });
+  await expect(page.getByTestId('call-camera')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByTestId('video-call').getByRole('alert')).toContainText('disconnected');
+  await page.getByTestId('call-camera').click();
+  await expect(page.getByTestId('call-camera')).toHaveAttribute('aria-pressed', 'true');
+  await page.getByTestId('call-leave').click();
+  await expect(page.getByTestId('video-window')).toHaveCount(0);
+  expect(await page.evaluate(() => window.__localTestStream.getTracks().every(track => track.readyState === 'ended'))).toBe(true);
+  await expect(page.getByRole('alert')).toHaveCount(0);
 });

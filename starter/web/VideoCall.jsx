@@ -14,7 +14,7 @@ function StreamVideo({ stream, muted, testId }) {
     video.srcObject = stream;
     setBlocked(false);
     video.play().catch((error) => { if (live && error.name === 'NotAllowedError') setBlocked(true); });
-    return () => { live = false; };
+    return () => { live = false; video.srcObject = null; };
   }, [stream]);
   return <><video ref={ref} data-testid={testId} autoPlay playsInline muted={muted} />
     {blocked && <button type="button" className="video-play" onClick={() => {
@@ -28,7 +28,7 @@ function Tile({ stream, name, userId, local, cameraOff, muted, connection = 'con
     {stream && <StreamVideo stream={stream} muted={local} testId={local ? 'local-video' : 'remote-video'} />}
     {(!stream || cameraOff || (!local && connection !== 'connected')) && <div className="video-placeholder">
       <span className="video-avatar">{initials(name)}</span>
-      <small>{cameraOff ? 'Camera off' : connection === 'failed' ? 'Could not connect' : 'Connecting…'}</small>
+      <small>{cameraOff ? 'Camera off' : connection === 'failed' ? 'Could not connect' : connection === 'disconnected' ? 'Reconnecting…' : 'Connecting…'}</small>
     </div>}
     <div className="video-person"><span className={`video-person-dot ${!local && connection !== 'connected' ? 'pending' : ''}`} /><span>{name}{local ? ' · You' : ''}</span>
       {muted && <span className="video-muted" aria-label={`${name} is muted`}><Icon name="micOff" size={13} /></span>}</div>
@@ -37,6 +37,8 @@ function Tile({ stream, name, userId, local, cameraOff, muted, connection = 'con
 
 export default function VideoCall({ call, peerId, user, orgName }) {
   const others = call.participants.filter((participant) => participant.peerId !== peerId);
+  const reconnecting = call.transportStatus !== 'connected' || others.some((participant) =>
+    ['disconnected', 'failed'].includes(call.connections.get(participant.peerId)));
   const [seconds, setSeconds] = useState(0);
   useEffect(() => {
     const start = Date.now();
@@ -47,7 +49,7 @@ export default function VideoCall({ call, peerId, user, orgName }) {
   return <FloatingWindow title="Team call" label="video call" testId="video-window"
     className="floating-video" corner="top-right" collapseContent={false} onClose={call.leave}>
     <section className="video-call-stage" data-testid="video-call" aria-label="Team video call">
-      <div className="video-call-head"><div><span className="call-live-badge"><i />Live call</span>
+      <div className="video-call-head"><div><span className={`call-live-badge ${reconnecting ? 'reconnecting' : ''}`} role="status"><i />{reconnecting ? 'Reconnecting' : others.length ? 'Live call' : 'Ready to connect'}</span>
         <span className="call-duration">{duration}</span></div>
         <span><Icon name="people" size={14} /> {Math.max(1, call.participants.length)} / 6 people</span></div>
       <div className="video-grid">
@@ -62,12 +64,13 @@ export default function VideoCall({ call, peerId, user, orgName }) {
           <strong>Better with your team</strong><p>Invite a friend to {orgName || 'your workspace'},<br />then ask them to join this call.</p></div>}
       </div>
       {call.error && <p className="call-error" role="alert">{call.error}</p>}
-      {!call.relayAvailable && <p className="call-relay-note">Calls between some networks need a relay. Setup is pending on this deployment.</p>}
       <div className="video-controls">
         <button type="button" data-testid="call-mute" className={call.muted ? 'control-off' : ''}
+          aria-label={call.muted ? 'Unmute microphone' : 'Mute microphone'}
           aria-pressed={call.muted} onClick={call.toggleMute} title={call.muted ? 'Turn microphone on' : 'Turn microphone off'}>
           <Icon name={call.muted ? 'micOff' : 'mic'} /><span>{call.muted ? 'Unmute' : 'Mute'}</span></button>
         <button type="button" data-testid="call-camera" className={call.cameraOff ? 'control-off' : ''}
+          aria-label={call.cameraOff ? 'Turn camera on' : 'Turn camera off'}
           aria-pressed={call.cameraOff} onClick={call.toggleCamera}>
           <Icon name={call.cameraOff ? 'cameraOff' : 'video'} /><span>{call.cameraOff ? 'Turn camera on' : 'Turn camera off'}</span></button>
         <button type="button" className="leave-call" data-testid="call-leave" onClick={call.leave}>

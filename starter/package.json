@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Q1 — multi-org permission console. One process: node:http API + Vite/React SPA.",
+  "description": "Q1 \u2014 multi-org permission console. One process: node:http API + Vite/React SPA.",
   "scripts": {
     "dev": "node --watch-path=./server --watch server/index.js",
     "build": "vite build",
@@ -16,7 +16,8 @@
     "test:chat": "node scripts/check-chat.js",
     "test:chat:server": "node --test tests/chat-server.test.mjs tests/chat-live.test.mjs",
     "personalisation": "node scripts/check-personalisation.js",
-    "fingerprint": "node scripts/personalise.js"
+    "fingerprint": "node scripts/personalise.js",
+    "pretest": "npm run build"
   },
   "dependencies": {
     "better-sqlite3": "^11.10.0",

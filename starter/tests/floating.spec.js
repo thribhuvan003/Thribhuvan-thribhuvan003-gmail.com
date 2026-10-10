@@ -149,3 +149,68 @@ test('a minimized teammate chat receives messages without replacing its connecti
     await Promise.all([writerContext.close(), readerContext.close()]);
   }
 });
+
+test('resize and maximize preserve chat geometry and drafts across short screens', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await openChat(page);
+  await page.getByTestId('chat-input').fill('Keep this draft while changing window size.');
+  await page.getByRole('button', { name: 'Float team chat' }).click();
+  const window = page.getByTestId('chat-window');
+  const before = await window.boundingBox();
+  const resize = page.getByRole('button', { name: 'Resize team chat window' });
+  await resize.focus();
+  await resize.press('Shift+ArrowRight');
+  await resize.press('Shift+ArrowDown');
+  const keyboardSize = await window.boundingBox();
+  expect(keyboardSize.width).toBeCloseTo(before.width + 40, 0);
+  expect(keyboardSize.height).toBeCloseTo(before.height + 40, 0);
+  const handle = await resize.boundingBox();
+  await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handle.x + handle.width / 2 + 40, handle.y + handle.height / 2 + 40, { steps: 5 });
+  await page.mouse.up();
+  const resized = await window.boundingBox();
+  expect(resized.width).toBeCloseTo(keyboardSize.width + 40, 0);
+  expect(resized.height).toBeCloseTo(keyboardSize.height + 40, 0);
+  await page.getByRole('button', { name: 'Maximize team chat', exact: true }).click();
+  await expect(window).toHaveClass(/is-maximized/);
+  await expect.poll(async () => (await window.boundingBox()).width).toBeCloseTo(1416, 0);
+  await expectInViewport(page, window);
+  await page.getByRole('button', { name: 'Restore size of team chat', exact: true }).click();
+  const restored = await window.boundingBox();
+  for (const axis of ['x', 'y', 'width', 'height']) expect(restored[axis]).toBeCloseTo(resized[axis], 0);
+  await page.setViewportSize({ width: 390, height: 360 });
+  await expectInViewport(page, window);
+  await expect(page.getByTestId('chat-input')).toBeVisible();
+  await expect(page.getByTestId('chat-send')).toBeInViewport();
+  await expect(page.getByTestId('chat-input')).toHaveValue('Keep this draft while changing window size.');
+  await page.getByRole('button', { name: 'Maximize team chat', exact: true }).click();
+  await expectInViewport(page, window);
+  mkdirSync('data', { recursive: true });
+  await page.screenshot({ path: 'data/maximized-chat-short-screen.png' });
+  await page.getByRole('button', { name: 'Minimize team chat', exact: true }).click();
+  await expect(page.getByTestId('chat-input')).toBeHidden();
+  await expectInViewport(page, window);
+  await page.getByRole('button', { name: 'Restore team chat', exact: true }).click();
+  await expect(page.getByTestId('chat-input')).toBeVisible();
+  await expectInViewport(page, window);
+});
+
+test('latest messages shortcut returns from older history without losing a draft', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await openChat(page);
+  await page.getByRole('button', { name: 'Float team chat' }).click();
+  for (let i = 0; i < 8; i++) {
+    const message = `Review ${i}\nLighting notes\nCamera notes\nReady for another pass`;
+    await page.getByTestId('chat-input').fill(message);
+    await page.getByTestId('chat-send').click();
+    await expect(page.getByTestId('chat-message').filter({ hasText: message })).toHaveCount(1);
+  }
+  await page.getByTestId('chat-input').fill('Unsent review notes');
+  await page.getByTestId('chat-history').evaluate(area => { area.scrollTop = 0; });
+  await expect(page.getByTestId('chat-jump')).toBeVisible();
+  await page.getByTestId('chat-jump').click();
+  await expect(page.getByTestId('chat-jump')).toBeHidden();
+  await expect(page.getByTestId('chat-message').last()).toBeInViewport();
+  await expect(page.getByTestId('chat-input')).toHaveValue('Unsent review notes');
+});
